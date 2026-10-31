@@ -19,6 +19,17 @@ Sliders on the right change the physics for both players.
 
 Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed).
 
-## Demo with dummy AIs
-`DEMO=1 node server.js` runs two scripted teams of four (they take turns kicking while the other team defends); every browser only watches.
-Demo mode sets easier parameters (time speed 8, threshold 0.1, weak walls, strong kicks) so goals happen. See `bots.js`.
+## Bots
+`BOTS=<team 0>,<team 1> node server.js` fills a team with a scripted strategy; `-` or nothing leaves it to a human. The human takes the free team.
+Both teams bots: everybody only watches, with easier physics (time speed 8, threshold 0.1, weak walls, strong kicks) so that goals happen.
+`DEMO=1` is the same as `BOTS=turns,turns`. Strategies (`bots.js`):
+
+| Name | Strategy |
+|---|---|
+| `turns` | The teams take turns (12 s): the attacker puts two passers behind the ball, the other team defends in a wall line |
+| `receiver` | Player 1 waits next to the opposing goal as a target man; players 2-3 stand behind the ball and pass to him; player 4 guards our goal |
+| `fortress` | All four in defense stance around our own goal, facing the ball, to deflect everything |
+| `shadow` | Players 1-2 each stand between one of the two most advanced opponents and our goal (wall on); players 3-4 attack with passes |
+| `lanes` | All four run sideways, each in its own quarter of the pitch length; the two nearest our goal defend, the other two attack |
+
+Example: `BOTS=shadow,- node server.js` and play red against the shadow bot.

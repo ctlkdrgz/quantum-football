@@ -5,7 +5,7 @@ const msg = document.getElementById('msg');
 const COLORS = ['#4da3ff', '#ff6b5e'];
 const STANCE_NAMES = ['Attack', 'Defense', 'Pass'];
 let slot = -1, grid = { W: 100, H: 50, goalDepth: 6 }, params = {}, defs = {}, state = null;
-let cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
+let bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
 const sliders = {};
 
 const off = document.createElement('canvas');
@@ -30,7 +30,7 @@ ws.onclose = () => { msg.textContent = 'disconnected'; };
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
   if (m.t === 'hello') {
-    slot = m.slot; grid = m.grid; defs = m.defs; params = m.params;
+    slot = m.slot; grid = m.grid; bots = m.bots; defs = m.defs; params = m.params;
     off.width = grid.W; off.height = grid.H; offCtx = off.getContext('2d'); img = offCtx.createImageData(grid.W, grid.H);
     buildSliders();
     document.title = slot >= 0 ? 'Quantum Football — you are ' + (slot ? 'red' : 'blue') : 'Quantum Football — spectating';
@@ -110,7 +110,8 @@ function updateHud() {
   else if (state.phase === 'goal') t = (state.lastScorer ? 'RED' : 'BLUE') + ' scores!';
   else if (state.phase === 'over') t = 'full time — ' + (state.score[0] === state.score[1] ? 'draw' : state.score[0] > state.score[1] ? 'blue wins' : 'red wins');
   else t = mm + ':' + ss;
-  msg.textContent = t + ' · ' + who;
+  const names = bots[0] || bots[1] ? ' · blue: ' + (bots[0] || 'human') + ' / red: ' + (bots[1] || 'human') : '';
+  msg.textContent = t + ' · ' + who + names;
 }
 
 function draw() {

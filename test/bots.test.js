@@ -1,0 +1,89 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { Match, W, H, TEAM_SIZE } = require('../sim');
+const { drive, STRATEGIES } = require('../bots');
+const { start, parseEnv } = require('../server');
+
+function play(names, secs) {
+  const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing';
+  m.setParam('threshold', 0.9); // no goals: we only look at where the players go
+  for (let k = 0; k < secs * 30; k++) { drive(m, names); m.step(1 / 30); }
+  return m;
+}
+const team = (m, t) => m.players.slice(t * TEAM_SIZE, (t + 1) * TEAM_SIZE);
+
+test('receiver: player 0 waits next to the opposing goal, on both sides', () => {
+  const m = play(['receiver', 'receiver'], 15);
+  assert.ok(Math.hypot(team(m, 0)[0].x - (W - 8), team(m, 0)[0].y - H / 2) < 3);
+  assert.ok(Math.hypot(team(m, 1)[0].x - 8, team(m, 1)[0].y - H / 2) < 3);
+  assert.equal(team(m, 0)[3].stance, 1, 'player 3 guards our goal');
+});
+
+test('fortress: all four in defense stance around their own goal', () => {
+  const m = play(['fortress', 'fortress'], 15);
+  for (const p of team(m, 0)) { assert.equal(p.stance, 1); assert.ok(p.x < 14, 'x ' + p.x); }
+  for (const p of team(m, 1)) { assert.equal(p.stance, 1); assert.ok(p.x > W - 14); }
+});
+
+test('shadow: two players stay between the two most advanced opponents and their goal', () => {
+  const m = play(['shadow', 'receiver'], 15);
+  const foes = team(m, 1).slice().sort((a, b) => a.x - b.x).slice(0, 2); // team 1 attacks left: smallest x = most advanced
+  const marks = team(m, 0).slice(0, 2);
+  marks.forEach((p) => assert.equal(p.stance, 1));
+  for (const f of foes) assert.ok(marks.some((p) => Math.abs(p.x - (f.x - 3)) < 2 && Math.abs(p.y - f.y) < 2), 'foe at ' + f.x.toFixed(1) + ',' + f.y.toFixed(1));
+  const mirror = play(['receiver', 'shadow'], 15); // same from the other side
+  assert.equal(team(mirror, 1)[0].stance, 1);
+});
+
+test('lanes: each player runs sideways inside its own quarter of the length', () => {
+  const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; m.setParam('threshold', 0.9);
+  const ys = [[], [], [], []];
+  for (let k = 0; k < 30 * 30; k++) {
+    drive(m, ['lanes', 'lanes']); m.step(1 / 30);
+    if (k > 30 * 6) team(m, 0).forEach((p, n) => ys[n].push(p.y));
+  }
+  team(m, 0).forEach((p, n) => {
+    assert.ok(Math.abs(p.x - (W / 8 + n * W / 4)) < 3, 'lane ' + n + ' x ' + p.x);
+    assert.ok(Math.max(...ys[n]) - Math.min(...ys[n]) > 15, 'sweeps sideways');
+  });
+  assert.deepEqual(team(m, 0).map((p) => p.stance), [1, 1, 0, 0]); // own half defends, far half attacks
+  assert.deepEqual(team(m, 1).map((p) => p.stance), [1, 1, 0, 0]); // mirrored: player 0 starts nearest its own goal too
+});
+
+test('turns: a scripted match with the default settings runs without trouble and the wave stays valid', () => {
+  const m = play(['turns', 'fortress'], 40);
+  assert.ok(m.R.every(Number.isFinite));
+  assert.deepEqual(Object.keys(STRATEGIES).sort(), ['fortress', 'lanes', 'receiver', 'shadow', 'turns']);
+  drive(m); // default: turns vs turns
+  drive(m, [null, 'lanes']); // a null team is left alone
+});
+
+test('BOTS / DEMO environment parsing', () => {
+  assert.deepEqual(parseEnv({ BOTS: 'receiver,-' }), { bots: ['receiver', null], demo: false });
+  assert.deepEqual(parseEnv({ BOTS: 'lanes,shadow' }), { bots: ['lanes', 'shadow'], demo: true });
+  assert.deepEqual(parseEnv({ DEMO: '1' }), { bots: ['turns', 'turns'], demo: true });
+  assert.deepEqual(parseEnv({}), { bots: [null, null], demo: false });
+  assert.throws(() => parseEnv({ BOTS: 'nope,-' }), /unknown bot nope/);
+});
+
+test('a human plays the free team against a bot; both-bot matches take no players', async () => {
+  const open = (port) => new Promise((resolve) => {
+    const ws = new WebSocket('ws://localhost:' + port + '/ws'); const c = { ws, hello: null, last: null };
+    ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.t === 'hello') c.hello = m; if (m.t === 'state') c.last = m; };
+    ws.onopen = () => resolve(c);
+  });
+  const until = async (f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise((r) => setTimeout(r, 30)); assert.ok(f()); };
+  const s1 = await start(0, { bots: ['fortress', null], demo: false });
+  const h = await open(s1.address().port);
+  await until(() => h.hello && h.last);
+  assert.equal(h.hello.slot, 1, 'the human gets the team the bot does not run');
+  await until(() => h.last.phase === 'countdown'); // match starts at once: the bot team is already present
+  h.ws.close(); s1.close(); s1.closeAllConnections();
+  const s2 = await start(0, { bots: ['lanes', 'shadow'], demo: true });
+  const w = await open(s2.address().port);
+  await until(() => w.hello);
+  assert.equal(w.hello.slot, -1);
+  await until(() => w.last && w.last.phase === 'playing' && w.last.params === undefined);
+  w.ws.close(); s2.close(); s2.closeAllConnections();
+});

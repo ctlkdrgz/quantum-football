@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { Match, PARAMS, W, H, GOAL_DEPTH, TEAM_SIZE } = require('./sim');
 const bots = require('./bots');
+const { STRATEGIES } = bots;
 
 const PUBLIC = path.join(__dirname, 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -47,12 +48,14 @@ function makeParser(sock, onText) {
 
 function start(port, opts = {}) {
   const match = new Match();
+  const botNames = opts.bots || [null, null]; // strategy per team, or null for a human
+  botNames.forEach((b, t) => { if (b) match.setPresent(t, true); });
   if (opts.demo) { match.setPresent(0, true); match.setPresent(1, true); match.setParam('timeScale', 8); match.setParam('threshold', 0.1); match.setParam('wallHeight', 1); match.setParam('kick', 2); }
   const clients = new Set(); // { sock, slot }
 
   const send = (c, obj) => { if (!c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
   const broadcast = (obj) => clients.forEach((c) => send(c, obj));
-  const hello = (c) => send(c, { t: 'hello', slot: c.slot, defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE } });
+  const hello = (c) => send(c, { t: 'hello', slot: c.slot, defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: botNames });
 
   const server = http.createServer((req, res) => {
     const rel = req.url.split('?')[0] === '/' ? '/index.html' : decodeURIComponent(req.url.split('?')[0]);
@@ -71,7 +74,7 @@ function start(port, opts = {}) {
       'Sec-WebSocket-Accept: ' + crypto.createHash('sha1').update(key + GUID).digest('base64') + '\r\n\r\n');
     sock.setNoDelay(true);
     const taken = new Set([...clients].map((c) => c.slot));
-    const c = { sock, slot: opts.demo ? -1 : [0, 1].find((s) => !taken.has(s)) ?? -1 }; // DEMO: bots play, browsers only watch
+    const c = { sock, slot: [0, 1].find((s) => !taken.has(s) && !botNames[s]) ?? -1 }; // teams run by a bot are not available
     clients.add(c);
     if (c.slot >= 0) match.setPresent(c.slot, true);
     hello(c);
@@ -99,7 +102,7 @@ function start(port, opts = {}) {
   let last = Date.now();
   const timer = setInterval(() => {
     const now = Date.now();
-    if (opts.demo) bots.drive(match);
+    if (botNames[0] || botNames[1]) bots.drive(match, botNames);
     match.step(Math.min(0.1, (now - last) / 1000));
     last = now;
     if (!clients.size) return;
@@ -112,8 +115,16 @@ function start(port, opts = {}) {
   return new Promise((resolve) => server.listen(port, () => resolve(server)));
 }
 
-module.exports = { start };
+// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks strategies: turns receiver fortress shadow lanes.
+// DEMO=1 is BOTS=turns,turns with easier physics so that the bots score. With BOTS on both teams the same easier physics apply.
+function parseEnv(env) {
+  const list = (env.BOTS || (env.DEMO ? 'turns,turns' : '')).split(',').map((s) => (s && s !== '-' ? s : null));
+  const bots = [list[0] || null, list[1] || null];
+  bots.forEach((b) => { if (b && !STRATEGIES[b]) throw new Error('unknown bot ' + b + '; have ' + Object.keys(STRATEGIES).join(', ')); });
+  return { bots, demo: !!(bots[0] && bots[1]) };
+}
+module.exports = { start, parseEnv };
 if (require.main === module) {
   const port = Number(process.env.PORT) || 8080;
-  start(port, { demo: !!process.env.DEMO }).then(() => console.log('Quantum Football on http://localhost:' + port));
+  start(port, parseEnv(process.env)).then(() => console.log('Quantum Football on http://localhost:' + port));
 }
