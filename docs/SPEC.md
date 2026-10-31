@@ -42,7 +42,7 @@ squeeze L down), and the mass light (0.7, heavier balls spread more slowly and l
 ## Wall modes and presets
 `additive` (0/1, applied at the next kick-off): 0 = Dirichlet walls, the rebound interferes with the incident wave. 1 = the pitch is unfolded into a 2W x 2H torus and the
 displayed density is the sum over the four mirror images: rebounds add probability and never cancel it. `wavesAcrossWidth()` (HUD "waves") = W k_rms / 2 pi.
-Presets (`PRESETS` in `sim.js`): `default`, `waves`, `additive`, `hybrid`; compared in `docs/VARIANTS.md`.
+Presets (`PRESETS` in `sim.js`): `default`, `waves`, `additive`, `waves-kick`, `waves-well`, `waves-wall`, `waves-mass`, `hybrid`; compared in `docs/VARIANTS.md`.
 
 ## Parameters (sliders, shared by both players, clamped on the server)
 Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal height, goal threshold, match duration,

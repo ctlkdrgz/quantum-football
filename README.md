@@ -2,11 +2,10 @@
 
 Two-player web game inspired by Greg Egan's *Quantum Soccer* (*Border Guards*). The ball is a wave function: it spreads, reflects off the
 walls, interferes with itself, and you score by concentrating enough of it in the other goal.
-A prototype in a side directory of this repo; it is unrelated to imbridge and meant to move to its own repo.
+A prototype.
 
 ## Run
 ```
-cd quantum-football
 node server.js            # http://localhost:8080  (PORT=1234 to change)
 node --test 'test/*.test.js'
 ```

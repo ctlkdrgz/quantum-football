@@ -118,7 +118,7 @@ function start(port, opts = {}) {
 
 // BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks strategies: turns receiver fortress shadow lanes relay plow.
 // DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.
-// PRESET=default|waves|additive starts from a named parameter set (docs/VARIANTS.md).
+// PRESET=default|waves|additive|waves-kick|waves-well|waves-wall|waves-mass|hybrid starts from a named parameter set (docs/VARIANTS.md).
 // PARAMS='{"kick":0.5,"additive":1}' overrides slider defaults at start (JSON).
 function parseEnv(env) {
   const list = (env.BOTS || (env.DEMO ? 'turns,turns' : '')).split(',').map((s) => (s && s !== '-' ? s : null));
