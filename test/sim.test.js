@@ -1,0 +1,97 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { Match, W, H, N, GOAL_DEPTH } = require('../sim');
+
+const playing = () => { const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; return m; };
+const run = (m, secs) => { for (let k = 0; k < secs * 30; k++) m.step(1 / 30); };
+const centroidX = (m) => { let s = 0; for (let i = 0; i < N; i++) s += ((i % W) + 0.5) * (m.R[i] ** 2 + m.I[i] ** 2); return s; };
+const total = (m) => { let s = 0; for (let i = 0; i < N; i++) s += m.R[i] ** 2 + m.I[i] ** 2; return s; };
+
+test('total probability stays 1 and nothing blows up', () => {
+  const m = playing(); m.setParam('timeScale', 12); m.setParam('wellDepth', 3); m.setParam('wallHeight', 4);
+  m.setStance(0, 2); m.setTarget(0, 50, 25); m.setStance(1, 1); m.setTarget(1, 40, 25);
+  run(m, 20);
+  assert.ok(Math.abs(total(m) - 1) < 1e-9);
+  assert.ok(m.R.every(Number.isFinite));
+});
+
+test('a kicked packet reflects off the wall and comes back', () => {
+  const m = playing(); m.setParam('attenuation', 0); m.setParam('wellDepth', 0);
+  m.setStance(1, 0); m.setTarget(1, 95, 5);
+  m.setStance(0, 2); m.setTarget(0, 44, 25);
+  m.players[0].x = 44; m.players[0].y = 25;
+  run(m, 2);
+  m.setStance(0, 0); m.setTarget(0, 0, 49);
+  let max = 0, last = 0;
+  for (let k = 0; k < 30 * 80; k++) { m.step(1 / 30); const c = centroidX(m); max = Math.max(max, c); last = c; }
+  assert.ok(max > 52, 'moved right: ' + max);
+  assert.ok(last < max - 1, 'turned back after reflecting');
+});
+
+test('an eigenmode is a stationary wave: density stays put', () => {
+  const m = playing(); m.setParam('attenuation', 0); m.setParam('wellDepth', 0); m.setParam('wallHeight', 0);
+  m.setStance(0, 1); m.setStance(1, 1); m.setTarget(0, 0, 0); m.setTarget(1, 100, 50);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    m.R[y * W + x] = Math.sin(2 * Math.PI * (x + 1) / (W + 1)) * Math.sin(Math.PI * (y + 1) / (H + 1)); m.I[y * W + x] = 0;
+  }
+  m.normalize();
+  const before = Float64Array.from(m.R, (r, i) => r * r + m.I[i] * m.I[i]);
+  run(m, 20);
+  let err = 0; for (let i = 0; i < N; i++) err = Math.max(err, Math.abs(m.R[i] ** 2 + m.I[i] ** 2 - before[i]));
+  assert.ok(err < 0.05 * Math.max(...before), 'max density drift ' + err);
+});
+
+test('probability in the right goal above threshold scores for player 0 then resets', () => {
+  const m = playing();
+  m.R.fill(0); m.I.fill(0);
+  for (let y = 20; y < 30; y++) for (let x = W - GOAL_DEPTH; x < W - 1; x++) m.R[y * W + x] = 1;
+  m.normalize();
+  m.step(1 / 30);
+  assert.deepEqual(m.score, [1, 0]);
+  assert.equal(m.phase, 'goal');
+  run(m, 3);
+  assert.equal(m.phase, 'countdown');
+  assert.ok(m.goalP[0] < 0.01 && m.goalP[1] < 0.01, 'ball back at centre');
+  run(m, 3.5);
+  assert.equal(m.phase, 'playing');
+});
+
+test('left goal scores for player 1; full time ends then restarts', () => {
+  const m = playing();
+  m.R.fill(0); m.I.fill(0);
+  for (let y = 20; y < 30; y++) for (let x = 1; x < GOAL_DEPTH; x++) m.R[y * W + x] = 1;
+  m.normalize(); m.step(1 / 30);
+  assert.deepEqual(m.score, [0, 1]);
+  const n = playing(); n.setParam('matchSeconds', 30); n.remaining = 0.01; n.step(0.05);
+  assert.equal(n.phase, 'over');
+  run(n, 11);
+  assert.equal(n.phase, 'countdown');
+  assert.deepEqual(n.score, [0, 0]);
+});
+
+test('match waits for two players and a disconnect resets everything', () => {
+  const m = new Match();
+  m.setPresent(0, true); assert.equal(m.phase, 'waiting');
+  m.setPresent(1, true); assert.equal(m.phase, 'countdown');
+  run(m, 3.5); assert.equal(m.phase, 'playing');
+  m.score = [2, 1]; m.setPresent(1, false);
+  assert.equal(m.phase, 'waiting'); assert.deepEqual(m.score, [0, 0]);
+});
+
+test('parameters are clamped and validated; players run at runSpeed', () => {
+  const m = playing();
+  assert.equal(m.setParam('nope', 1), false);
+  assert.equal(m.setParam('mass', NaN), false);
+  m.setParam('mass', 99); assert.equal(m.params.mass, 4);
+  m.setParam('runSpeed', 10); m.setTarget(0, 90, 25);
+  const x0 = m.players[0].x; run(m, 1);
+  assert.ok(Math.abs(m.players[0].x - x0 - 10) < 0.01);
+  m.setTarget(0, -50, 999); assert.deepEqual([m.players[0].tx, m.players[0].ty], [0, H]);
+});
+
+test('snapshot is compact and sane', () => {
+  const s = playing().snapshot();
+  assert.equal(s.dens.length, N);
+  assert.equal(Math.max(...s.dens), 255);
+});

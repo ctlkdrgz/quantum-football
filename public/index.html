@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quantum Football</title>
+<style>
+  :root { --bg:#0b0e14; --panel:#151a24; --fg:#dde3ee; --dim:#8893a6; --p0:#4da3ff; --p1:#ff6b5e; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; }
+  main { max-width:1200px; margin:0 auto; padding:12px 16px; display:grid; gap:12px; grid-template-columns: minmax(0,1fr) 280px; }
+  @media (max-width:900px){ main{ grid-template-columns:1fr; } }
+  #hud { display:flex; justify-content:space-between; align-items:baseline; font-size:20px; margin-bottom:6px; }
+  #hud .s0{ color:var(--p0);} #hud .s1{ color:var(--p1);} #msg{ color:var(--dim); font-size:14px; }
+  canvas { width:100%; display:block; background:#000; border-radius:6px; cursor:crosshair; }
+  .stances { display:flex; gap:8px; margin-top:8px; }
+  .stances button { flex:1; padding:8px; background:var(--panel); color:var(--fg); border:2px solid transparent; border-radius:6px; cursor:pointer; font-size:14px; }
+  .stances button.on { border-color:var(--fg); }
+  aside { background:var(--panel); border-radius:6px; padding:10px 12px; align-self:start; }
+  aside h2 { font-size:14px; margin:0 0 8px; color:var(--dim); font-weight:600; }
+  label { display:block; margin:8px 0 0; font-size:12px; color:var(--dim); }
+  label span { float:right; color:var(--fg); }
+  input[type=range] { width:100%; }
+  small { color:var(--dim); display:block; margin-top:8px; line-height:1.4; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <div id="hud"><span class="s0" id="s0">0</span><span id="msg">connecting…</span><span class="s1" id="s1">0</span></div>
+    <canvas id="c" width="1000" height="500"></canvas>
+    <div class="stances" id="stances">
+      <button data-s="0">1 · Attack<br><small>well carries the ball</small></button>
+      <button data-s="1">2 · Defense<br><small>wall repels the ball</small></button>
+      <button data-s="2">3 · Pass<br><small>strong kick, burns stamina</small></button>
+    </div>
+    <small>Move the mouse: your player runs to the cursor and faces the way it runs. Keys 1/2/3 pick the stance.
+      Bright = where the ball is likely to be. Bars at the goals show the probability of the ball being inside.</small>
+  </section>
+  <aside><h2>Parameters (shared by both players)</h2><div id="sliders"></div></aside>
+</main>
+<script src="client.js"></script>
+</body>
+</html>
