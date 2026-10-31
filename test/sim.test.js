@@ -183,3 +183,55 @@ test('presets only name real parameters inside their ranges', () => {
   assert.deepEqual(Object.keys(PRESETS), ['default', 'waves', 'additive', 'hybrid']);
   for (const p of Object.values(PRESETS)) for (const [k, v] of Object.entries(p)) assert.ok(PARAMS[k] && v >= PARAMS[k].min && v <= PARAMS[k].max, k);
 });
+
+// ---- auto-aim -------------------------------------------------------------------------------------------------
+const park = (m) => { for (let i = 0; i < NP; i++) { m.players[i].x = i < 4 ? 3 : W - 3; m.players[i].y = 3 + 4 * (i % 4); m.setStance(i, 1); m.players[i].hx = i < 4 ? -1 : 1; m.players[i].hy = 0; } };
+const place = (m, i, x, y, extra = {}) => Object.assign(m.players[i], { x, y, vx: 0, vy: 0, hx: 1, hy: 0 }, extra);
+
+test('aim: alone, a pass goes to the opposing goal; heading is ignored with auto-aim and used without it', () => {
+  const m = playing(); park(m);
+  place(m, 0, 40, 25, { hx: 0, hy: -1 }); m.setStance(0, 2);
+  const a = m.aim(0);
+  assert.ok(a.dx > 0.99 && Math.abs(a.dy) < 0.05 && a.tx === W && a.ty === H / 2, JSON.stringify(a));
+  m.setParam('autoAim', 0); const b = m.aim(0);
+  assert.deepEqual([b.dx, b.dy], [0, -1]);
+});
+
+test('aim: a teammate who is running ahead is led (predicted position), and team 1 aims left', () => {
+  const m = playing(); park(m);
+  place(m, 0, 30, 25); place(m, 1, 60, 10, { vx: 8, vy: 0 }); m.setStance(1, 0);
+  const a = m.aim(0);
+  assert.ok(a.tx > 62 && Math.abs(a.ty - 10) < 1, 'target ' + a.tx + ',' + a.ty); // beyond where he stands now
+  const n = playing(); park(n); place(n, 4, 70, 25); const b = n.aim(4); assert.ok(b.dx < -0.99 && b.tx === 0, 'team 1 attacks the left goal');
+});
+
+test('aim: never passes to a defender or backwards', () => {
+  const m = playing(); park(m);
+  place(m, 0, 40, 25); place(m, 1, 70, 25); m.setStance(1, 1); // a teammate in defense stance, ahead
+  assert.equal(m.aim(0).tx, W, 'not to the defender');
+  m.setStance(1, 0); place(m, 1, 20, 25);
+  assert.equal(m.aim(0).tx, W, 'not backwards');
+  place(m, 1, 70, 25); assert.ok(m.aim(0).tx < W, 'a forward attacker is a candidate');
+});
+
+test('aim: avoids a line blocked by an opposing wall, and skips teammates that are too close', () => {
+  const m = playing(); park(m);
+  place(m, 0, 30, 25); place(m, 1, 60, 25); place(m, 2, 60, 5); [1, 2].forEach((j) => m.setStance(j, 0)); place(m, 5, 45, 25); // opposing player 5 stands in defense on the direct line
+  const a = m.aim(0);
+  assert.ok(a.ty < 15, 'passes to the open teammate ' + a.tx + ',' + a.ty);
+  const n = playing(); park(n); place(n, 0, 30, 25); place(n, 1, 31, 25); n.setStance(1, 0);
+  assert.equal(n.aim(0).tx, W, 'a teammate 1 m away is not a pass');
+});
+
+test('aim: kicks follow the aim, not the heading: a pass facing up still sends the ball toward the goal', () => {
+  const shift = (autoAim) => {
+    const m = playing(); park(m); m.setParam('autoAim', autoAim); m.setParam('attenuation', 0);
+    place(m, 0, 40, 25, { hx: 0, hy: -1 }); m.setStance(0, 2);
+    run(m, 3); m.setStance(0, 1); run(m, 6);
+    let cx = 0, cy = 0; const D = m.density(); for (let i = 0; i < N; i++) { cx += ((i % W) + 0.5) * D[i]; cy += (Math.floor(i / W) + 0.5) * D[i]; }
+    return { cx, cy };
+  };
+  const on = shift(1), off = shift(0);
+  assert.ok(on.cx > off.cx + 3, 'auto-aim goes right ' + on.cx + ' vs ' + off.cx);
+  assert.ok(off.cy < on.cy - 1, 'heading up went up ' + off.cy + ' vs ' + on.cy);
+});

@@ -27,6 +27,7 @@ Two players, one wave-function ball, a 100 x 50 m pitch with reflecting walls. K
 - Stance per player (keys 1/2/3 or buttons, applies to the selected player):
   - **Attack**: a moving attractive potential well around the player carries part of the wave along as they run, plus a gentle forward momentum push.
   - **Defense**: a repulsive potential wall in front of the player, perpendicular to their heading. It reflects and blocks the wave; running with it pushes the wave.
+  - **Pass** and **Attack** kicks are **auto-aimed** (`autoAim` param, on by default; off = along the heading). The target is the cheapest of the opposing goal and each teammate's *predicted* position (his position plus his velocity order times the ball's travel time, estimated from kick, mass and time speed), counting only teammates who are not in Defense stance (their wall would repel the ball) and are at least 5 m closer to the goal, and with a penalty when an opposing wall stands on the line. The client draws the aim as a dotted line and a small circle.
   - **Pass**: a strong forward momentum kick (phase ramp `exp(i k d.r)`) over a wide window just ahead of the player. No stamina: it works as long as the ball is in the window
     (the kick moves away with the player, so a running passer only gives a short push; stand still to kick hard).
 

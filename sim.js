@@ -32,6 +32,7 @@ const PARAMS = {
   reach:       { min: 1.5,  max: 12,   def: 8,    step: 0.1,  label: 'Player reach (m)' },
   wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Attack: well depth' },
   wallHeight:  { min: 0,    max: 4,    def: 3,    step: 0.05, label: 'Defense: wall height' },
+  autoAim:     { min: 0,    max: 1,    def: 1,    step: 1,    label: 'Auto-aim kicks at teammate/goal (0 = along heading)' },
   additive:    { min: 0,    max: 1,    def: 0,    step: 1,    label: 'Walls: coherent (0) / additive (1), next kick-off' },
   kick:        { min: 0,    max: 3,    def: 2,    step: 0.05, label: 'Kick strength (momentum/s)' },
 };
@@ -75,7 +76,7 @@ class Match {
   setParam(k, v) {
     const d = PARAMS[k];
     if (!d || typeof v !== 'number' || !Number.isFinite(v)) return false;
-    this.params[k] = k === 'additive' ? Math.round(clamp(v, 0, 1)) : clamp(v, d.min, d.max);
+    this.params[k] = k === 'additive' || k === 'autoAim' ? Math.round(clamp(v, 0, 1)) : clamp(v, d.min, d.max);
     if (k === 'matchSeconds' && this.phase !== 'playing') this.remaining = this.params.matchSeconds;
     return true;
   }
@@ -292,31 +293,66 @@ class Match {
     });
   }
 
+  // Where player i's kick goes (Pass and Attack stances): the cheapest of the opposing goal and each teammate's PREDICTED position.
+  // Teammates in Defense stance (their wall would repel the ball) and teammates not at least 5 m closer to the goal are not candidates.
+  // cost = distance to the target + half the distance from the target to the goal (+ a penalty if an opposing wall stands on the way).
+  // The prediction moves a teammate along its velocity order for the time the ball needs (distance / estimated ball speed).
+  // With autoAim off the kick goes along the player's heading.
+  aim(i) {
+    const p = this.players[i], P = this.params;
+    if (!P.autoAim) return { dx: p.hx, dy: p.hy, tx: clamp(p.x + p.hx * 15, 0, W), ty: clamp(p.y + p.hy * 15, 0, H) };
+    const team = i < TEAM_SIZE ? 0 : 1, mate0 = team * TEAM_SIZE, foe0 = (1 - team) * TEAM_SIZE;
+    const goal = { x: team === 0 ? W : 0, y: H / 2 };
+    const speed = clamp(0.7 * P.kick * P.timeScale / P.mass, 2, 30); // estimated ball speed (m/s) after a one-second kick
+    const walls = [];
+    for (let j = foe0; j < foe0 + TEAM_SIZE; j++) if (this.players[j].stance === STANCE.DEFENSE) walls.push(this.players[j]);
+    const blocked = (c) => walls.some((f) => {
+      const ex = c.x - p.x, ey = c.y - p.y, len2 = ex * ex + ey * ey || 1;
+      const u = clamp(((f.x - p.x) * ex + (f.y - p.y) * ey) / len2, 0, 1);
+      return Math.hypot(f.x - (p.x + u * ex), f.y - (p.y + u * ey)) < 0.6 * P.reach;
+    });
+    const cost = (c) => Math.hypot(c.x - p.x, c.y - p.y) + 0.5 * Math.hypot(goal.x - c.x, goal.y - c.y) + (blocked(c) ? 30 : 0);
+    let best = goal, bc = cost(goal);
+    for (let j = mate0; j < mate0 + TEAM_SIZE; j++) {
+      if (j === i || this.players[j].stance === STANCE.DEFENSE) continue; // a defender's wall would repel the ball
+      const m = this.players[j], T = clamp(Math.hypot(m.x - p.x, m.y - p.y) / speed, 0, 4);
+      const c = { x: clamp(m.x + m.vx * T, 0, W), y: clamp(m.y + m.vy * T, 0, H) };
+      if (Math.hypot(c.x - p.x, c.y - p.y) < 3) continue; // too close to be a pass
+      if (Math.hypot(goal.x - c.x, goal.y - c.y) > Math.hypot(goal.x - p.x, goal.y - p.y) - 5) continue; // only forward passes
+      const k = cost(c);
+      if (k < bc) { bc = k; best = c; }
+    }
+    const L = Math.hypot(best.x - p.x, best.y - p.y) || 1;
+    return { dx: (best.x - p.x) / L, dy: (best.y - p.y) / L, tx: best.x, ty: best.y };
+  }
+
   buildPotential(dtReal) {
     const { V, params: P } = this;
     V.fill(0, 0, this.gn);
     const sig = P.reach * 0.6;
-    for (const p of this.players) {
+    this.players.forEach((p, i) => {
+      const a = p.stance === STANCE.DEFENSE ? null : this.aim(i); // where an Attack push or a Pass goes
+      p.aim = a ? { tx: a.tx, ty: a.ty } : null;
       if (p.stance === STANCE.ATTACK) {
         // Moving attractive well: carries the wave along with the player, plus a gentle forward push.
-        this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy) => {
-          this.forBox(cx, cy, 4 * sig, (i, dx, dy) => { V[i] -= P.wellDepth * Math.exp(-(dx * dx + dy * dy) / (2 * sig * sig)); });
+        this.eachImage(p.x, p.y, a.dx, a.dy, (cx, cy, hx, hy) => {
+          this.forBox(cx, cy, 4 * sig, (c, dx, dy) => { V[c] -= P.wellDepth * Math.exp(-(dx * dx + dy * dy) / (2 * sig * sig)); });
           this.kickPhase(cx, cy, hx, hy, sig, 0.15 * P.kick * dtReal);
         });
       } else if (p.stance === STANCE.DEFENSE) {
         // Repulsive wall in front of the player, perpendicular to heading.
         const su = 0.35 * P.reach, sw = 1.2 * P.reach, off = P.reach;
         this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy) => {
-          this.forBox(cx + hx * off, cy + hy * off, 4 * sw, (i, dx, dy) => {
+          this.forBox(cx + hx * off, cy + hy * off, 4 * sw, (c, dx, dy) => {
             const u = dx * hx + dy * hy, w = -dx * hy + dy * hx;
-            V[i] += P.wallHeight * Math.exp(-(u * u) / (2 * su * su) - (w * w) / (2 * sw * sw));
+            V[c] += P.wallHeight * Math.exp(-(u * u) / (2 * su * su) - (w * w) / (2 * sw * sw));
           });
         });
       } else {
         // Pass: strong forward kick just ahead of the player.
-        this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy) => this.kickPhase(cx + hx * P.reach, cy + hy * P.reach, hx, hy, 4 * sig, 0.7 * P.kick * dtReal));
+        this.eachImage(p.x, p.y, a.dx, a.dy, (cx, cy, hx, hy) => this.kickPhase(cx + hx * P.reach, cy + hy * P.reach, hx, hy, 4 * sig, 0.7 * P.kick * dtReal));
       }
-    }
+    });
   }
 
   // Neighbour sum; out of range is 0 (Dirichlet) or wraps around (torus).
@@ -379,7 +415,7 @@ class Match {
       phase: this.phase, timer: this.timer, remaining: this.remaining,
       score: this.score.slice(), lastScorer: this.lastScorer, present: this.present.slice(),
       goalP: this.goalP.slice(), peak: max, presence, length: this.characteristicLength(), waves: this.wavesAcrossWidth(),
-      players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance })),
+      players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance, aim: p.aim || null })),
       dens,
     };
   }

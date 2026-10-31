@@ -151,6 +151,11 @@ function draw() {
     ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill();
     ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 16, y + Math.sin(a) * 16);
     ctx.lineTo(x + Math.cos(a + 2.5) * 8, y + Math.sin(a + 2.5) * 8); ctx.lineTo(x + Math.cos(a - 2.5) * 8, y + Math.sin(a - 2.5) * 8); ctx.fill();
+    if (p.aim) { // where an Attack push / Pass is aimed: a teammate's predicted position or the goal
+      ctx.strokeStyle = COLORS[team] + '66'; ctx.lineWidth = 1; ctx.setLineDash([2, 5]);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(p.aim.tx * s, p.aim.ty * s); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(p.aim.tx * s, p.aim.ty * s, 4, 0, 7); ctx.stroke(); ctx.strokeStyle = COLORS[team];
+    }
     if (p.vx || p.vy) { ctx.lineWidth = 1.5; arrow(x, y, p.vx, p.vy); } // current velocity order
     if (p.stance === 1) { // defense wall
       const wx = x + Math.cos(a) * r, wy = y + Math.sin(a) * r, l = 1.2 * r * 1.5;
