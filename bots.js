@@ -7,6 +7,7 @@
 //   lanes     the four players run sideways, each in its own quarter of the pitch length (two defend, two attack)
 //   relay     a bucket brigade: player 0 passes from behind the ball, players 1-3 stand as stepping stones on the way to the goal, in attack stance
 //   plow      the four players form a wall line (defense stance) and advance together, pushing the wave in front of them toward the goal
+//   random    every player picks a random velocity and stance every 0.5-2 s (not mirror-symmetric, by design)
 const { W, H, N, TEAM_SIZE } = require('./sim');
 
 function centroid(m) {
@@ -109,6 +110,19 @@ const STRATEGIES = {
       const i = k.base + n, d = Math.min(12 * n, Math.max(0, L - 8));
       m.setStance(i, 0); goTo(m, i, c.x + ux * d, c.y + uy * d, ux, uy);
     });
+  },
+
+  random(m, t, c, st) {
+    const k = ctx(t);
+    st.ticks = (st.ticks || 0) + 1; // drive() runs about 30 times a second
+    st.until = st.until || [0, 0, 0, 0];
+    for (let n = 0; n < TEAM_SIZE; n++) {
+      if (st.ticks < st.until[n]) continue;
+      st.until[n] = st.ticks + 15 + Math.random() * 45;
+      const a = Math.random() * 2 * Math.PI, v = Math.random() * m.params.runSpeed;
+      m.setStance(k.base + n, Math.floor(Math.random() * 3));
+      m.setOrder(k.base + n, Math.cos(a) * v, Math.sin(a) * v);
+    }
   },
 
   plow(m, t, c) {

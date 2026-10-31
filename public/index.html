@@ -21,11 +21,16 @@
   label { display:block; margin:8px 0 0; font-size:12px; color:var(--dim); }
   label span { float:right; color:var(--fg); }
   input[type=range] { width:100%; }
+  #band { grid-column:1 / -1; display:flex; gap:16px; align-items:center; flex-wrap:wrap; background:var(--panel); border-radius:6px; padding:8px 12px; }
+  #band b { font-size:12px; color:var(--dim); font-weight:600; }
+  #band .t0 { color:var(--p0); } #band .t1 { color:var(--p1); }
+  #band select { background:var(--bg); color:var(--fg); border:1px solid var(--dim); border-radius:4px; padding:3px 6px; }
   small { color:var(--dim); display:block; margin-top:8px; line-height:1.4; }
 </style>
 </head>
 <body>
 <main>
+  <div id="band"><b>CONTROL</b><span id="band-body"></span></div>
   <section>
     <div id="hud"><span class="s0" id="s0">0</span><span id="msg">connecting…</span><span class="s1" id="s1">0</span></div>
     <canvas id="c" width="1000" height="500"></canvas>

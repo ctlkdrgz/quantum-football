@@ -82,7 +82,7 @@ test('plow: four walls advance abreast toward the goal and keep 12 m behind the 
 test('turns: a scripted match with the default settings runs without trouble and the wave stays valid', () => {
   const m = play(['turns', 'fortress'], 40);
   assert.ok(m.R.every(Number.isFinite));
-  assert.deepEqual(Object.keys(STRATEGIES).sort(), ['fortress', 'lanes', 'plow', 'receiver', 'relay', 'shadow', 'turns']);
+  assert.deepEqual(Object.keys(STRATEGIES).sort(), ['fortress', 'lanes', 'plow', 'random', 'receiver', 'relay', 'shadow', 'turns']);
   drive(m); // default: turns vs turns
   drive(m, [null, 'lanes']); // a null team is left alone
 });
@@ -91,12 +91,18 @@ test('BOTS / DEMO environment parsing', () => {
   assert.deepEqual(parseEnv({ BOTS: 'receiver,-' }), { bots: ['receiver', null], preset: 'default', params: {} });
   assert.deepEqual(parseEnv({ BOTS: 'lanes,shadow' }), { bots: ['lanes', 'shadow'], preset: 'default', params: {} });
   assert.deepEqual(parseEnv({ DEMO: '1' }), { bots: ['turns', 'turns'], preset: 'default', params: {} });
-  assert.deepEqual(parseEnv({}), { bots: [null, null], preset: 'default', params: {} });
+  assert.deepEqual(parseEnv({}), { bots: ['random', 'random'], preset: 'default', params: {} });
   assert.deepEqual(parseEnv({ PARAMS: '{"kick":0.5}' }).params, { kick: 0.5 });
   assert.deepEqual(parseEnv({ PRESET: 'additive', PARAMS: '{"kick":1}' }).params, { additive: 1, kick: 1 });
   assert.equal(parseEnv({ PRESET: 'waves' }).preset, 'waves'); assert.equal(parseEnv({ PRESET: 'waves', PARAMS: '{}' }).preset, 'waves+');
   assert.throws(() => parseEnv({ PRESET: 'nope' }), /unknown preset/);
   assert.throws(() => parseEnv({ BOTS: 'nope,-' }), /unknown bot nope/);
+});
+
+test('random: orders change over time and stay valid', () => {
+  const m = play(['random', 'random'], 10);
+  assert.ok(m.R.every(Number.isFinite));
+  assert.ok(m.players.some((p) => p.vx || p.vy));
 });
 
 test('a human plays the free team against a bot; both-bot matches take no players', async () => {
@@ -122,7 +128,7 @@ test('a human plays the free team against a bot; both-bot matches take no player
 
 test('symmetry [asymmetry fix]: every strategy except turns plays as an exact mirror image of itself', () => {
   const err = (m) => { const D = m.density(); let e = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W / 2; x++) e = Math.max(e, Math.abs(D[y * W + x] - D[y * W + (W - 1 - x)])); return e; };
-  for (const s of Object.keys(STRATEGIES).filter((n) => n !== 'turns')) { // turns: someone has to attack first, by design
+  for (const s of Object.keys(STRATEGIES).filter((n) => n !== 'turns' && n !== 'random')) { // turns: someone has to attack first; random: random, by design
     const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; m.setParam('threshold', 0.9);
     let worst = 0;
     for (let k = 0; k < 30 * 20; k++) { drive(m, [s, s]); m.step(1 / 30); worst = Math.max(worst, err(m)); }

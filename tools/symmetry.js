@@ -28,7 +28,7 @@ for (const preset of ['default', 'waves', 'additive']) {
   }
   console.log('physics, mirrored actors,', preset.padEnd(8), 'max mirror error', worst.toExponential(2));
 }
-for (const s of Object.keys(bots.STRATEGIES)) {
+for (const s of Object.keys(bots.STRATEGIES).filter((n) => n !== 'random')) {
   const m = fresh('default'); let first = -1, worst = 0;
   for (let k = 0; k < 30 * 60; k++) { bots.drive(m, [s, s]); m.step(1 / 30); const e = mirrorError(m); if (e > 1e-9 && first < 0) first = k / 30; worst = Math.max(worst, e); }
   console.log(('bot ' + s).padEnd(18), 'against its own mirror: first asymmetry', first < 0 ? 'never' : first.toFixed(2) + ' s', ' max error', worst.toExponential(2));

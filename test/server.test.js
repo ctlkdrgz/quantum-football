@@ -12,7 +12,7 @@ const open = (port) => new Promise((resolve) => {
 const until = async (f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise((r) => setTimeout(r, 30)); assert.ok(f()); };
 
 test('first two browsers play, the third spectates, and a free slot is reused', async () => {
-  const server = await start(0);
+  const server = await start(0, { bots: [null, null] });
   const port = server.address().port;
   const a = await open(port), b = await open(port), c = await open(port);
   await until(() => a.hello && b.hello && c.hello);
@@ -35,5 +35,23 @@ test('first two browsers play, the third spectates, and a free slot is reused', 
   a.ws.close(); // player 0 leaves: spectator takes the slot
   await until(() => c.hello.slot === 0);
   [b, c].forEach((x) => x.ws.close());
+  server.close(); server.closeAllConnections();
+});
+
+test('the first client is admin and chooses who controls each team', async () => {
+  const server = await start(0);
+  const port = server.address().port;
+  const a = await open(port), b = await open(port);
+  await until(() => a.hello && b.hello);
+  assert.deepEqual([a.hello.bots, a.hello.admin, b.hello.admin, a.hello.slot, b.hello.slot], [['random', 'random'], true, false, -1, -1]);
+  assert.ok(a.hello.strategies.includes('random'));
+  b.ws.send(JSON.stringify({ t: 'control', team: 0, who: 'human' })); // not the admin: ignored
+  a.ws.send(JSON.stringify({ t: 'control', team: 1, who: 'nope' })); // unknown script: ignored
+  a.ws.send(JSON.stringify({ t: 'control', team: 0, who: 'human' }));
+  await until(() => a.hello.slot === 0);
+  assert.deepEqual([a.hello.bots, b.hello.slot], [[null, 'random'], -1]);
+  a.ws.close(); // the admin leaves: b becomes admin and takes the human team
+  await until(() => b.hello.admin && b.hello.slot === 0);
+  b.ws.close();
   server.close(); server.closeAllConnections();
 });

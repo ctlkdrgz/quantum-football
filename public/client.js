@@ -5,7 +5,7 @@ const msg = document.getElementById('msg');
 const COLORS = ['#4da3ff', '#ff6b5e'];
 const STANCE_NAMES = ['Attack', 'Defense', 'Pass'];
 let slot = -1, grid = { W: 100, H: 50, goalDepth: 6 }, params = {}, defs = {}, state = null;
-let preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
+let admin = false, strategies = [], preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
 const sliders = {};
 
 const off = document.createElement('canvas');
@@ -30,13 +30,39 @@ ws.onclose = () => { msg.textContent = 'disconnected'; };
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
   if (m.t === 'hello') {
-    slot = m.slot; grid = m.grid; bots = m.bots; preset = m.preset; defs = m.defs; params = m.params;
+    slot = m.slot; admin = m.admin; strategies = m.strategies; grid = m.grid; bots = m.bots; preset = m.preset; defs = m.defs; params = m.params;
     off.width = grid.W; off.height = grid.H; offCtx = off.getContext('2d'); img = offCtx.createImageData(grid.W, grid.H);
     buildSliders();
     document.title = slot >= 0 ? 'Quantum Football — you are ' + (slot ? 'red' : 'blue') : 'Quantum Football — spectating';
-  } else if (m.t === 'params') { params = m.params; syncSliders(); }
+    buildBand();
+  } else if (m.t === 'control') { bots = m.bots; buildBand(); }
+  else if (m.t === 'params') { params = m.params; syncSliders(); }
   else if (m.t === 'state') { state = m; state.bytes = Uint8Array.from(atob(m.dens), (c) => c.charCodeAt(0)); updateHud(); }
 };
+
+// Top band: the admin (first client to connect) picks who controls each team; the others see it read-only.
+function buildBand() {
+  const body = document.getElementById('band-body');
+  body.textContent = '';
+  ['blue', 'red'].forEach((name, t) => {
+    const lab = document.createElement('label');
+    lab.style.cssText = 'display:inline;margin-right:16px;font-size:14px';
+    lab.className = 't' + t;
+    lab.append(name + ': ');
+    if (admin) {
+      const sel = document.createElement('select');
+      for (const who of ['human', ...strategies]) sel.add(new Option(who, who));
+      sel.value = bots[t] || 'human';
+      sel.onchange = () => sendJSON({ t: 'control', team: t, who: sel.value });
+      lab.append(sel);
+    } else lab.append(bots[t] || 'human');
+    body.append(lab);
+  });
+  const note = document.createElement('span');
+  note.style.color = 'var(--dim)';
+  note.textContent = admin ? 'you are the admin; "human" teams go to the earliest connections' : 'only the admin changes this';
+  body.append(note);
+}
 
 function buildSliders() {
   const box = document.getElementById('sliders');

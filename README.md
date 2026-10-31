@@ -23,8 +23,10 @@ Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/ASYMMETRY.md](docs/ASYMMET
 interfering. Comparison, with videos' numbers and a recommendation: [docs/VARIANTS.md](docs/VARIANTS.md). Reproduce the table: `node tools/variants.js`.
 
 ## Bots
-`BOTS=<team 0>,<team 1> node server.js` fills a team with a scripted strategy; `-` or nothing leaves it to a human. The human takes the free team.
-Both teams bots: everybody only watches.
+`BOTS=<team 0>,<team 1> node server.js` sets the starting controller of each team; `-` leaves a team to a human. Default: `random,random`.
+The first browser to connect is the admin: a band at the top of the page lets it change, live, who controls each team (`human` or any script below).
+`human` teams go to the earliest connections (admin first), the rest spectate; if the admin leaves, the next connection becomes admin.
+`random` (new): every player picks a random velocity and stance every 0.5-2 s.
 `DEMO=1` is the same as `BOTS=turns,turns`. Strategies (`bots.js`):
 
 | Name | Strategy |

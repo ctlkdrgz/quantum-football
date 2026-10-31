@@ -48,15 +48,25 @@ function makeParser(sock, onText) {
 
 function start(port, opts = {}) {
   const match = new Match();
-  const botNames = opts.bots || [null, null]; // strategy per team, or null for a human
+  // Who controls each team: a strategy name, or null for a human. Default: the 'random' script on both.
+  const control = (opts.bots || ['random', 'random']).slice(0, 2);
   for (const [k, val] of Object.entries(opts.params || {})) match.setParam(k, val);
   match.kickoff(); // some parameters (packet width, wall mode) take effect at kick-off
-  botNames.forEach((b, t) => { if (b) match.setPresent(t, true); });
-  const clients = new Set(); // { sock, slot }
+  const clients = new Set(); // { sock, slot }, in connection order; the first one is the admin
 
   const send = (c, obj) => { if (!c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
   const broadcast = (obj) => clients.forEach((c) => send(c, obj));
-  const hello = (c) => send(c, { t: 'hello', slot: c.slot, defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: botNames, preset: opts.preset || 'custom' });
+  const admin = () => clients.values().next().value;
+  const hello = (c) => send(c, { t: 'hello', slot: c.slot, admin: c === admin(), strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: control, preset: opts.preset || 'custom' });
+  // Teams controlled by a human go to the earliest connections; everyone else spectates. Clients whose slot changed get a new hello.
+  const assign = () => {
+    const free = [0, 1].filter((t) => !control[t]);
+    const before = new Map([...clients].map((c) => [c, c.slot]));
+    let i = 0;
+    for (const c of clients) c.slot = i < free.length ? free[i++] : -1;
+    for (let t = 0; t < 2; t++) match.setPresent(t, !control[t] ? [...clients].some((c) => c.slot === t) : true);
+    for (const c of clients) if (c.slot !== before.get(c) || !before.has(c)) hello(c);
+  };
 
   const server = http.createServer((req, res) => {
     const rel = req.url.split('?')[0] === '/' ? '/index.html' : decodeURIComponent(req.url.split('?')[0]);
@@ -74,28 +84,29 @@ function start(port, opts = {}) {
     sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
       'Sec-WebSocket-Accept: ' + crypto.createHash('sha1').update(key + GUID).digest('base64') + '\r\n\r\n');
     sock.setNoDelay(true);
-    const taken = new Set([...clients].map((c) => c.slot));
-    const c = { sock, slot: [0, 1].find((s) => !taken.has(s) && !botNames[s]) ?? -1 }; // teams run by a bot are not available
+    const c = { sock, slot: -1 };
     clients.add(c);
-    if (c.slot >= 0) match.setPresent(c.slot, true);
+    assign();
     hello(c);
 
     sock.on('data', makeParser(sock, (text) => {
       let m;
       try { m = JSON.parse(text); } catch { return; }
-      if (!m || c.slot < 0) return; // spectators only watch
+      if (!m) return;
+      if (m.t === 'control' && c === admin() && [0, 1].includes(m.team) && (m.who === 'human' || STRATEGIES[m.who])) {
+        control[m.team] = m.who === 'human' ? null : m.who;
+        match.botState = [{}, {}];
+        assign();
+        broadcast({ t: 'control', bots: control });
+        return;
+      }
+      if (c.slot < 0) return; // spectators only watch
       const mine = Number.isInteger(m.p) && m.p >= 0 && m.p < TEAM_SIZE ? c.slot * TEAM_SIZE + m.p : -1; // you only command your own four
       if (m.t === 'order' && mine >= 0) match.setOrder(mine, m.vx, m.vy);
       else if (m.t === 'stance' && mine >= 0) match.setStance(mine, m.s);
       else if (m.t === 'param' && match.setParam(m.k, m.v)) broadcast({ t: 'params', params: match.params });
     }));
-    const drop = () => {
-      if (!clients.delete(c)) return;
-      if (c.slot < 0) return;
-      match.setPresent(c.slot, false);
-      const next = [...clients].find((x) => x.slot < 0); // promote the first spectator
-      if (next) { next.slot = c.slot; match.setPresent(c.slot, true); hello(next); }
-    };
+    const drop = () => { if (clients.delete(c)) { assign(); if (admin()) hello(admin()); } }; // the next in line inherits the team, or the admin role
     sock.on('close', drop);
     sock.on('error', drop);
   });
@@ -103,7 +114,7 @@ function start(port, opts = {}) {
   let last = Date.now();
   const timer = setInterval(() => {
     const now = Date.now();
-    if (botNames[0] || botNames[1]) bots.drive(match, botNames);
+    if (control[0] || control[1]) bots.drive(match, control);
     match.step(Math.min(0.1, (now - last) / 1000));
     last = now;
     if (!clients.size) return;
@@ -113,15 +124,16 @@ function start(port, opts = {}) {
     broadcast(s);
   }, TICK_MS);
   server.on('close', () => clearInterval(timer));
-  return new Promise((resolve) => server.listen(port, () => resolve(server)));
+  return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, () => { server.off('error', reject); resolve(server); }); });
 }
 
-// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks strategies: turns receiver fortress shadow lanes relay plow.
+// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks the starting strategies: random turns receiver fortress shadow lanes relay plow (default random,random).
+// The first browser to connect is the admin and can change who controls each team from the band at the top of the page.
 // DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.
 // PRESET=default|waves|additive|waves-kick|waves-well|waves-wall|waves-mass|hybrid starts from a named parameter set (docs/VARIANTS.md).
 // PARAMS='{"kick":0.5,"additive":1}' overrides slider defaults at start (JSON).
 function parseEnv(env) {
-  const list = (env.BOTS || (env.DEMO ? 'turns,turns' : '')).split(',').map((s) => (s && s !== '-' ? s : null));
+  const list = (env.BOTS || (env.DEMO ? 'turns,turns' : 'random,random')).split(',').map((s) => (s && s !== '-' ? s : null));
   const bots = [list[0] || null, list[1] || null];
   bots.forEach((b) => { if (b && !STRATEGIES[b]) throw new Error('unknown bot ' + b + '; have ' + Object.keys(STRATEGIES).join(', ')); });
   if (env.PRESET && !PRESETS[env.PRESET]) throw new Error('unknown preset ' + env.PRESET + '; have ' + Object.keys(PRESETS).join(', '));
@@ -129,7 +141,28 @@ function parseEnv(env) {
   return { bots, preset: env.PARAMS ? preset + '+' : preset, params: { ...(PRESETS[env.PRESET] || {}), ...(env.PARAMS ? JSON.parse(env.PARAMS) : {}) } };
 }
 module.exports = { start, parseEnv };
+// Port busy (usually an older run of this server): stop that process if it is a node server.js, then retry.
+function killOld(port) {
+  const { execSync } = require('child_process');
+  let out = '';
+  try { out = execSync('ss -ltnpH "sport = :' + port + '"', { encoding: 'utf8' }); } catch { return false; }
+  let killed = false;
+  for (const [, pid] of out.matchAll(/pid=(\d+)/g)) {
+    let cmd = '';
+    try { cmd = fs.readFileSync('/proc/' + pid + '/cmdline', 'utf8'); } catch { continue; }
+    if (+pid === process.pid || !/node/.test(cmd) || !/server\.js/.test(cmd)) { console.log('port ' + port + ' is held by pid ' + pid + ' (' + cmd.replace(/\0/g, ' ') + '), not touching it'); continue; }
+    console.log('stopping old server pid ' + pid);
+    process.kill(+pid, 'SIGTERM'); killed = true;
+  }
+  return killed;
+}
 if (require.main === module) {
   const port = Number(process.env.PORT) || 8080;
-  start(port, parseEnv(process.env)).then(() => console.log('Quantum Football on http://localhost:' + port));
+  const go = (retry) => start(port, parseEnv(process.env)).then(
+    () => console.log('Quantum Football on http://localhost:' + port),
+    (err) => {
+      if (err.code === 'EADDRINUSE' && retry && killOld(port)) return new Promise((r) => setTimeout(r, 500)).then(() => go(false));
+      throw err;
+    });
+  go(true);
 }
