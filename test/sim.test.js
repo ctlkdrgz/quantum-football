@@ -235,3 +235,37 @@ test('aim: kicks follow the aim, not the heading: a pass facing up still sends t
   assert.ok(on.cx > off.cx + 3, 'auto-aim goes right ' + on.cx + ' vs ' + off.cx);
   assert.ok(off.cy < on.cy - 1, 'heading up went up ' + off.cy + ' vs ' + on.cy);
 });
+
+// ---- left/right symmetry ----------------------------------------------------------------------------------------
+const mirrorError = (m) => { const D = m.density(); let e = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W / 2; x++) e = Math.max(e, Math.abs(D[y * W + x] - D[y * W + (W - 1 - x)])); return e; };
+
+test('symmetry [asymmetry fix]: mirrored actors keep the density a mirror image, in every stance and wall mode', () => {
+  for (const additive of [0, 1]) for (const stance of [0, 1, 2]) {
+    const m = playing(); m.setParam('additive', additive); m.kickoff(); m.setParam('threshold', 0.9);
+    let worst = 0;
+    for (let k = 0; k < 30 * 8; k++) {
+      const t = k / 30;
+      for (let n = 0; n < 4; n++) {
+        const vx = 6 * Math.cos(t / 3 + n), vy = 5 * Math.sin(t / 4 + n);
+        m.setStance(n, stance); m.setStance(n + 4, stance); m.setOrder(n, vx, vy); m.setOrder(n + 4, -vx, vy);
+      }
+      m.step(1 / 30); worst = Math.max(worst, mirrorError(m));
+    }
+    assert.ok(worst < 1e-10, `additive ${additive} stance ${stance}: ${worst}`);
+  }
+});
+
+test('symmetry [asymmetry fix]: forBox covers exactly the cells whose centre is within the radius (same count mirrored)', () => {
+  const m = new Match();
+  for (const cx of [15, 15.3, 40.5]) {
+    const count = (x) => { let n = 0, minDx = 1e9, maxDx = -1e9; m.forBox(x, 25.2, 19.2, (i, dx) => { n++; minDx = Math.min(minDx, dx); maxDx = Math.max(maxDx, dx); }); return { n, minDx, maxDx }; };
+    const a = count(cx), b = count(W - cx);
+    assert.equal(a.n, b.n); assert.ok(Math.abs(a.minDx + b.maxDx) < 1e-9 && Math.abs(a.maxDx + b.minDx) < 1e-9, 'mirrored extents');
+  }
+});
+
+test('symmetry [asymmetry fix]: a simultaneous tie goes to the team behind, not always to team 0', () => {
+  const both = () => { const m = playing(); m.R.fill(0); m.I.fill(0); for (let y = 20; y < 30; y++) for (let x = 1; x < GOAL_DEPTH; x++) { m.R[y * W + x] = 1; m.R[y * W + (W - 1 - x)] = 1; } m.normalize(); return m; };
+  const m = both(); m.step(1 / 30); assert.deepEqual(m.score, [1, 0], 'equal scores: team 0');
+  const n = both(); n.score = [1, 0]; n.step(1 / 30); assert.deepEqual(n.score, [1, 1], 'team 1 was behind');
+});

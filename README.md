@@ -17,7 +17,7 @@ You command four players. Drag from one of your players: the drag is its velocit
 **2** Defense (wall repels it), **3** Pass (strong forward kick) set the selected player's stance; **Q/W/E/R** select players 1-4.
 Sliders on the right change the physics for both players.
 
-Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed), [docs/PLOT-ENGINE.md](docs/PLOT-ENGINE.md) (the ball's characteristic length as a story and pacing device).
+Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/ASYMMETRY.md](docs/ASYMMETRY.md) (left/right fairness: what was wrong and how it is checked), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed), [docs/PLOT-ENGINE.md](docs/PLOT-ENGINE.md) (the ball's characteristic length as a story and pacing device).
 
 ## Variants
 `PRESET=default|waves|additive|hybrid node server.js` (and `PARAMS='{...}'` for single overrides). `waves`: about 2-3 waves across the pitch. `additive`: wall rebounds add instead of

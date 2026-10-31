@@ -118,3 +118,13 @@ test('a human plays the free team against a bot; both-bot matches take no player
   await until(() => w.last && w.last.phase === 'playing' && w.last.params === undefined);
   w.ws.close(); s2.close(); s2.closeAllConnections();
 });
+
+test('symmetry [asymmetry fix]: every strategy except turns plays as an exact mirror image of itself', () => {
+  const err = (m) => { const D = m.density(); let e = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W / 2; x++) e = Math.max(e, Math.abs(D[y * W + x] - D[y * W + (W - 1 - x)])); return e; };
+  for (const s of Object.keys(STRATEGIES).filter((n) => n !== 'turns')) { // turns: someone has to attack first, by design
+    const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; m.setParam('threshold', 0.9);
+    let worst = 0;
+    for (let k = 0; k < 30 * 20; k++) { drive(m, [s, s]); m.step(1 / 30); worst = Math.max(worst, err(m)); }
+    assert.ok(worst < 1e-9, s + ' ' + worst);
+  }
+});

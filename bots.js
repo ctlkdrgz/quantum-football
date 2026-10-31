@@ -32,7 +32,8 @@ function passers(m, k, ks, c, gx, gy) {
   const L = Math.hypot(gx - c.x, gy - c.y) || 1, ux = (gx - c.x) / L, uy = (gy - c.y) / L;
   ks.forEach((idx, n) => {
     const i = k.base + idx, p = m.players[i];
-    const tx = c.x - ux * 5 - uy * (n ? 2 : -2), ty = c.y - uy * 5 + ux * (n ? 2 : -2);
+    const side = (n ? 2 : -2) * k.d; // times the attack direction, so that the two teams are mirror images of each other
+    const tx = c.x - ux * 5 - uy * side, ty = c.y - uy * 5 + ux * side;
     const there = Math.hypot(p.x - tx, p.y - ty) < 3;
     m.setStance(i, there ? 2 : 0);
     goTo(m, i, tx, ty, ux, uy);
@@ -75,7 +76,9 @@ const STRATEGIES = {
   shadow(m, t, c) {
     const k = ctx(t), foe = (1 - t) * TEAM_SIZE;
     // the most advanced opponents are those closest to our goal line
-    const adv = [0, 1, 2, 3].map((n) => m.players[foe + n]).sort((a, b) => Math.abs(a.x - k.own) - Math.abs(b.x - k.own)).slice(0, 2);
+    // (ties within 1 micrometre go by player number: a bare sort let float noise decide, and the two teams then picked different marks)
+    const byAdvance = (a, b) => { const d = Math.abs(a.x - k.own) - Math.abs(b.x - k.own); return Math.abs(d) > 1e-6 ? d : a.n - b.n; };
+    const adv = [0, 1, 2, 3].map((n) => ({ n, x: m.players[foe + n].x, y: m.players[foe + n].y })).sort(byAdvance).slice(0, 2);
     adv.forEach((o, n) => { // stand between the opponent and our goal, wall facing him
       const i = k.base + n, x = o.x - k.d * 3;
       m.setStance(i, 1); goTo(m, i, x, o.y, o.x - x, 0);

@@ -255,7 +255,10 @@ class Match {
     const [l, r] = this.goalP;
     const t = this.params.threshold;
     if (Math.max(l, r) <= t) return;
-    this.lastScorer = r >= l ? 0 : 1; // team 0 attacks the right goal
+    // team 0 attacks the right goal. If both goals cross the threshold on the same tick (symmetric play), the point goes to the team behind on goals (team 0 on equal scores)
+    // - a plain `r >= l` handed every exact tie to team 0.
+    const tie = Math.abs(r - l) < 1e-12;
+    this.lastScorer = tie ? (this.score[0] <= this.score[1] ? 0 : 1) : r > l ? 0 : 1;
     this.score[this.lastScorer]++;
     this.phase = 'goal';
     this.timer = GOAL_PAUSE_S;
@@ -265,8 +268,9 @@ class Match {
   forBox(cx, cy, rad, fn) {
     const { gw, gh, add } = this;
     const rx = add ? Math.min(rad, gw / 2 - 1) : rad, ry = add ? Math.min(rad, gh / 2 - 1) : rad;
-    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
-      for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+    // exactly the cells whose centre is within the radius: mirror-symmetric (floor/ceil kept one extra cell on the + side)
+    for (let y = Math.ceil(cy - ry - 0.5); y <= Math.floor(cy + ry - 0.5); y++) {
+      for (let x = Math.ceil(cx - rx - 0.5); x <= Math.floor(cx + rx - 0.5); x++) {
         let xi = x, yi = y;
         if (add) { xi = ((x % gw) + gw) % gw; yi = ((y % gh) + gh) % gh; } else if (x < 0 || x >= gw || y < 0 || y >= gh) continue;
         fn(yi * gw + xi, x + 0.5 - cx, y + 0.5 - cy);
