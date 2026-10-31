@@ -21,7 +21,7 @@ Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/RESEARCH.md](docs/RESEARCH
 
 ## Bots
 `BOTS=<team 0>,<team 1> node server.js` fills a team with a scripted strategy; `-` or nothing leaves it to a human. The human takes the free team.
-Both teams bots: everybody only watches, with easier physics (time speed 8, threshold 0.1, weak walls, strong kicks) so that goals happen.
+Both teams bots: everybody only watches.
 `DEMO=1` is the same as `BOTS=turns,turns`. Strategies (`bots.js`):
 
 | Name | Strategy |

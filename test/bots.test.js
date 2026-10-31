@@ -27,7 +27,7 @@ test('fortress: all four in defense stance around their own goal', () => {
 });
 
 test('shadow: two players stay between the two most advanced opponents and their goal', () => {
-  const m = play(['shadow', 'receiver'], 15);
+  const m = play(['shadow', 'fortress'], 20); // a steady opponent, so the marks have time to settle
   const foes = team(m, 1).slice().sort((a, b) => a.x - b.x).slice(0, 2); // team 1 attacks left: smallest x = most advanced
   const marks = team(m, 0).slice(0, 2);
   marks.forEach((p) => assert.equal(p.stance, 1));
@@ -88,10 +88,10 @@ test('turns: a scripted match with the default settings runs without trouble and
 });
 
 test('BOTS / DEMO environment parsing', () => {
-  assert.deepEqual(parseEnv({ BOTS: 'receiver,-' }), { bots: ['receiver', null], demo: false });
-  assert.deepEqual(parseEnv({ BOTS: 'lanes,shadow' }), { bots: ['lanes', 'shadow'], demo: true });
-  assert.deepEqual(parseEnv({ DEMO: '1' }), { bots: ['turns', 'turns'], demo: true });
-  assert.deepEqual(parseEnv({}), { bots: [null, null], demo: false });
+  assert.deepEqual(parseEnv({ BOTS: 'receiver,-' }), { bots: ['receiver', null] });
+  assert.deepEqual(parseEnv({ BOTS: 'lanes,shadow' }), { bots: ['lanes', 'shadow'] });
+  assert.deepEqual(parseEnv({ DEMO: '1' }), { bots: ['turns', 'turns'] });
+  assert.deepEqual(parseEnv({}), { bots: [null, null] });
   assert.throws(() => parseEnv({ BOTS: 'nope,-' }), /unknown bot nope/);
 });
 
@@ -102,13 +102,13 @@ test('a human plays the free team against a bot; both-bot matches take no player
     ws.onopen = () => resolve(c);
   });
   const until = async (f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise((r) => setTimeout(r, 30)); assert.ok(f()); };
-  const s1 = await start(0, { bots: ['fortress', null], demo: false });
+  const s1 = await start(0, { bots: ['fortress', null] });
   const h = await open(s1.address().port);
   await until(() => h.hello && h.last);
   assert.equal(h.hello.slot, 1, 'the human gets the team the bot does not run');
   await until(() => h.last.phase === 'countdown'); // match starts at once: the bot team is already present
   h.ws.close(); s1.close(); s1.closeAllConnections();
-  const s2 = await start(0, { bots: ['lanes', 'shadow'], demo: true });
+  const s2 = await start(0, { bots: ['lanes', 'shadow'] });
   const w = await open(s2.address().port);
   await until(() => w.hello);
   assert.equal(w.hello.slot, -1);

@@ -17,18 +17,18 @@ const STANCE = { ATTACK: 0, DEFENSE: 1, PASS: 2 };
 
 // Every slider. Units: lengths in metres, "game time" = real time x timeScale.
 const PARAMS = {
-  timeScale:    { min: 0.5, max: 12,  def: 5,    step: 0.1,  label: 'Wave time speed' },
-  mass:         { min: 0.5, max: 4,   def: 1,    step: 0.05, label: 'Ball weight (mass)' },
-  attenuation:  { min: 0,   max: 1,   def: 0.05, step: 0.01, label: 'Attenuation (smoothing)' },
-  packetWidth:  { min: 2,   max: 15,  def: 4,    step: 0.5,  label: 'Kick-off packet width (m)' },
-  goalHeight:   { min: 6,   max: 40,  def: 20,   step: 1,    label: 'Goal height (m)' },
-  threshold:    { min: 0.05, max: 0.9, def: 0.15, step: 0.01, label: 'Goal threshold (probability)' },
-  matchSeconds: { min: 30,  max: 600, def: 180,  step: 10,   label: 'Match duration (s)' },
-  runSpeed:     { min: 2,   max: 30,  def: 12,   step: 0.5,  label: 'Player max speed (m/s)' },
-  reach:        { min: 1.5, max: 8,   def: 4,    step: 0.1,  label: 'Player reach (m)' },
-  wellDepth:    { min: 0,   max: 3,   def: 1,    step: 0.05, label: 'Attack: well depth' },
-  wallHeight:   { min: 0,   max: 4,   def: 3,    step: 0.05, label: 'Defense: wall height' },
-  kick:         { min: 0,   max: 3,   def: 1,    step: 0.05, label: 'Kick strength (momentum/s)' },
+  timeScale:   { min: 0.5,  max: 12,   def: 5,    step: 0.1,  label: 'Wave time speed' },
+  mass:        { min: 0.5,  max: 4,    def: 0.7,  step: 0.05, label: 'Ball weight (mass)' },
+  attenuation: { min: 0,    max: 1,    def: 0.05, step: 0.01, label: 'Attenuation (smoothing)' },
+  packetWidth: { min: 2,    max: 20,   def: 14,   step: 0.5,  label: 'Kick-off packet width (m)' },
+  goalHeight:  { min: 6,    max: 40,   def: 20,   step: 1,    label: 'Goal height (m)' },
+  threshold:   { min: 0.05, max: 0.9,  def: 0.1,  step: 0.01, label: 'Goal threshold (probability)' },
+  matchSeconds:{ min: 30,   max: 600,  def: 180,  step: 10,   label: 'Match duration (s)' },
+  runSpeed:    { min: 2,    max: 30,   def: 12,   step: 0.5,  label: 'Player max speed (m/s)' },
+  reach:       { min: 1.5,  max: 12,   def: 8,    step: 0.1,  label: 'Player reach (m)' },
+  wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Attack: well depth' },
+  wallHeight:  { min: 0,    max: 4,    def: 3,    step: 0.05, label: 'Defense: wall height' },
+  kick:        { min: 0,    max: 3,    def: 2,    step: 0.05, label: 'Kick strength (momentum/s)' },
 };
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -142,6 +142,16 @@ class Match {
       }
     }
     return [l, r];
+  }
+
+  // Characteristic length of the ball along the long axis (metres): participation length 1 / sum(rho_x^2),
+  // where rho_x is the density summed over the pitch height. A uniform ball of width L gives L; a Gaussian of std s gives 3.54 s.
+  characteristicLength() {
+    const col = this.A; col.fill(0);
+    for (let i = 0; i < N; i++) col[i % W] += this.R[i] * this.R[i] + this.I[i] * this.I[i];
+    let q = 0;
+    for (let x = 0; x < W; x++) q += col[x] * col[x];
+    return q > 0 ? 1 / q : 0;
   }
 
   step(dt) {
@@ -295,7 +305,7 @@ class Match {
     return {
       phase: this.phase, timer: this.timer, remaining: this.remaining,
       score: this.score.slice(), lastScorer: this.lastScorer, present: this.present.slice(),
-      goalP: this.goalP.slice(), peak: max, presence,
+      goalP: this.goalP.slice(), peak: max, presence, length: this.characteristicLength(),
       players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance })),
       dens,
     };

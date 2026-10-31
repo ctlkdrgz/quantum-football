@@ -30,6 +30,14 @@ Two players, one wave-function ball, a 100 x 50 m pitch with reflecting walls. K
   - **Pass**: a strong forward momentum kick (phase ramp `exp(i k d.r)`) over a wide window just ahead of the player. No stamina: it works as long as the ball is in the window
     (the kick moves away with the player, so a running passer only gives a short push; stand still to kick hard).
 
+## Characteristic length of the ball
+`L = 1 / sum(rho_x^2)` (metres): the participation length of the ball's density summed over the pitch height, along the 100 m axis. A uniform ball gives 100 m,
+the lowest standing mode 66.7 m, a Gaussian packet of density std s gives 3.54 s, a ball squeezed into a goal a few metres. Shown in the HUD (`ball length`).
+The defaults are tuned so that **L is about half the pitch (50 m)**: the kick-off packet (width 14) has L = 49.6 m, and over bot matches L averages about 46 m
+(35-65 m for 65 % of the time, goals about 5 per 3-minute match, measured with `tune` runs of 6 bot pairings; noisy). Left alone, the ball "breathes" between 50 and 80 m.
+What it takes to keep L near 50 m while the ball is still playable: the players' reach (8 m) must be a fair fraction of L, kicks must be strong (2), wells shallow (0.5, deep wells
+squeeze L down), and the mass light (0.7, heavier balls spread more slowly and let wells win). See `docs/PLOT-ENGINE.md` for what L can do for the game.
+
 ## Parameters (sliders, shared by both players, clamped on the server)
 Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal height, goal threshold, match duration,
 player max speed, player reach, attack well depth, defense wall height, kick strength. Ranges and defaults: `PARAMS` in `sim.js`.
@@ -40,5 +48,5 @@ player max speed, player reach, attack well depth, defense wall height, kick str
 - No npm dependencies. Node 22.
 
 ## Known rough edges / ideas
-- Defaults are tuned by a scripted player only, not by playtesting; goals need real focus of the wave (threshold 0.15).
+- Defaults are tuned with bots only, not by playtesting (see the characteristic-length section). Bot matches are not symmetric between the two sides (e.g. `shadow` as blue scores far more than as red); not investigated.
 - No measurement/collapse; no eigenmode view; no rematch button; no auth, anyone who reaches the port can play.

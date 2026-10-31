@@ -50,7 +50,6 @@ function start(port, opts = {}) {
   const match = new Match();
   const botNames = opts.bots || [null, null]; // strategy per team, or null for a human
   botNames.forEach((b, t) => { if (b) match.setPresent(t, true); });
-  if (opts.demo) { match.setPresent(0, true); match.setPresent(1, true); match.setParam('timeScale', 8); match.setParam('threshold', 0.1); match.setParam('wallHeight', 1); match.setParam('kick', 2); }
   const clients = new Set(); // { sock, slot }
 
   const send = (c, obj) => { if (!c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
@@ -116,12 +115,12 @@ function start(port, opts = {}) {
 }
 
 // BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks strategies: turns receiver fortress shadow lanes relay plow.
-// DEMO=1 is BOTS=turns,turns with easier physics so that the bots score. With BOTS on both teams the same easier physics apply.
+// DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.
 function parseEnv(env) {
   const list = (env.BOTS || (env.DEMO ? 'turns,turns' : '')).split(',').map((s) => (s && s !== '-' ? s : null));
   const bots = [list[0] || null, list[1] || null];
   bots.forEach((b) => { if (b && !STRATEGIES[b]) throw new Error('unknown bot ' + b + '; have ' + Object.keys(STRATEGIES).join(', ')); });
-  return { bots, demo: !!(bots[0] && bots[1]) };
+  return { bots };
 }
 module.exports = { start, parseEnv };
 if (require.main === module) {

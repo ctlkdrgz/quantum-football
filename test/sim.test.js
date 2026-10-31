@@ -114,3 +114,16 @@ test('snapshot is compact and sane', () => {
   assert.equal(s.dens.length, N);
   assert.equal(Math.max(...s.dens), 255);
 });
+
+test('characteristic length: uniform ball = pitch length, lowest mode 2/3, kick-off packet about half the pitch', () => {
+  const m = new Match();
+  m.R.fill(1); m.I.fill(0); m.normalize();
+  assert.ok(Math.abs(m.characteristicLength() - W) < 1e-6);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) m.R[y * W + x] = Math.sin(Math.PI * (x + 1) / (W + 1)) * Math.sin(Math.PI * (y + 1) / (H + 1));
+  m.normalize();
+  assert.ok(Math.abs(m.characteristicLength() - 200 / 3) < 1);
+  const k = new Match(); k.kickoff(); // default packet width
+  assert.ok(Math.abs(k.characteristicLength() - W / 2) < 3, 'kick-off length ' + k.characteristicLength());
+  k.R.fill(0); k.I.fill(0); assert.equal(k.characteristicLength(), 0);
+  assert.equal(new Match().snapshot().length > 0, true);
+});
