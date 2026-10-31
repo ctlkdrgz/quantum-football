@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Match, W, H, N, GOAL_DEPTH, NP } = require('../sim');
+const { Match, PARAMS, PRESETS, W, H, N, GOAL_DEPTH, NP } = require('../sim');
 
 const playing = () => { const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; return m; };
 // No player influences the wave: walls of height 0 and no wells.
@@ -177,4 +177,9 @@ test('additive mode: grid switches at kick-off, players still act, mass and goal
   m.normalize(); m.phase = 'playing'; m.step(1 / 30);
   assert.deepEqual(m.score, [1, 0]);
   m.setParam('additive', 0); m.kickoff(); assert.equal(m.gn, N);
+});
+
+test('presets only name real parameters inside their ranges', () => {
+  assert.deepEqual(Object.keys(PRESETS), ['default', 'waves', 'additive', 'hybrid']);
+  for (const p of Object.values(PRESETS)) for (const [k, v] of Object.entries(p)) assert.ok(PARAMS[k] && v >= PARAMS[k].min && v <= PARAMS[k].max, k);
 });

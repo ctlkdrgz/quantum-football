@@ -111,7 +111,7 @@ function updateHud() {
   else if (state.phase === 'over') t = 'full time — ' + (state.score[0] === state.score[1] ? 'draw' : state.score[0] > state.score[1] ? 'blue wins' : 'red wins');
   else t = mm + ':' + ss;
   const names = bots[0] || bots[1] ? ' · blue: ' + (bots[0] || 'human') + ' / red: ' + (bots[1] || 'human') : '';
-  msg.textContent = t + ' · ' + who + names + ' · ball length ' + Math.round(state.length) + ' m';
+  msg.textContent = t + ' · ' + who + names + ' · ball length ' + Math.round(state.length) + ' m · ' + state.waves.toFixed(1) + ' waves';
 }
 
 function draw() {

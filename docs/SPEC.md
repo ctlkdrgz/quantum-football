@@ -38,6 +38,11 @@ The defaults are tuned so that **L is about half the pitch (50 m)**: the kick-of
 What it takes to keep L near 50 m while the ball is still playable: the players' reach (8 m) must be a fair fraction of L, kicks must be strong (2), wells shallow (0.5, deep wells
 squeeze L down), and the mass light (0.7, heavier balls spread more slowly and let wells win). See `docs/PLOT-ENGINE.md` for what L can do for the game.
 
+## Wall modes and presets
+`additive` (0/1, applied at the next kick-off): 0 = Dirichlet walls, the rebound interferes with the incident wave. 1 = the pitch is unfolded into a 2W x 2H torus and the
+displayed density is the sum over the four mirror images: rebounds add probability and never cancel it. `wavesAcrossWidth()` (HUD "waves") = W k_rms / 2 pi.
+Presets (`PRESETS` in `sim.js`): `default`, `waves`, `additive`, `hybrid`; compared in `docs/VARIANTS.md`.
+
 ## Parameters (sliders, shared by both players, clamped on the server)
 Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal height, goal threshold, match duration,
 player max speed, player reach, attack well depth, defense wall height, kick strength. Ranges and defaults: `PARAMS` in `sim.js`.

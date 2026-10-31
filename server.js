@@ -5,7 +5,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { Match, PARAMS, W, H, GOAL_DEPTH, TEAM_SIZE } = require('./sim');
+const { Match, PARAMS, PRESETS, W, H, GOAL_DEPTH, TEAM_SIZE } = require('./sim');
 const bots = require('./bots');
 const { STRATEGIES } = bots;
 
@@ -118,12 +118,14 @@ function start(port, opts = {}) {
 
 // BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks strategies: turns receiver fortress shadow lanes relay plow.
 // DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.
+// PRESET=default|waves|additive starts from a named parameter set (docs/VARIANTS.md).
 // PARAMS='{"kick":0.5,"additive":1}' overrides slider defaults at start (JSON).
 function parseEnv(env) {
   const list = (env.BOTS || (env.DEMO ? 'turns,turns' : '')).split(',').map((s) => (s && s !== '-' ? s : null));
   const bots = [list[0] || null, list[1] || null];
   bots.forEach((b) => { if (b && !STRATEGIES[b]) throw new Error('unknown bot ' + b + '; have ' + Object.keys(STRATEGIES).join(', ')); });
-  return { bots, params: env.PARAMS ? JSON.parse(env.PARAMS) : {} };
+  if (env.PRESET && !PRESETS[env.PRESET]) throw new Error('unknown preset ' + env.PRESET + '; have ' + Object.keys(PRESETS).join(', '));
+  return { bots, params: { ...(PRESETS[env.PRESET] || {}), ...(env.PARAMS ? JSON.parse(env.PARAMS) : {}) } };
 }
 module.exports = { start, parseEnv };
 if (require.main === module) {

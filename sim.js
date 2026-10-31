@@ -36,6 +36,17 @@ const PARAMS = {
   kick:        { min: 0,    max: 3,    def: 2,    step: 0.05, label: 'Kick strength (momentum/s)' },
 };
 
+// Named parameter sets (overrides of the defaults), see docs/VARIANTS.md.
+const PRESETS = {
+  default: {},
+  // About 2-3 waves across the pitch length (median over bot matches 2.7, the defaults give about 15): strong smoothing, light heavy-time, gentle kicks.
+  waves: { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.3, wallHeight: 1, wellDepth: 0.3 },
+  // Default physics, but rebounds on the walls add probability instead of interfering (see the wall modes above).
+  additive: { additive: 1 },
+  // An experiment from docs/VARIANTS.md (waves + additive walls + deeper well). Narrower than either parent: not recommended.
+  hybrid: { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.3, wallHeight: 1, wellDepth: 1, additive: 1 },
+};
+
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 class Match {
@@ -374,4 +385,4 @@ class Match {
   }
 }
 
-module.exports = { Match, PARAMS, STANCE, W, H, N, GOAL_DEPTH, TEAM_SIZE, NP };
+module.exports = { Match, PARAMS, PRESETS, STANCE, W, H, N, GOAL_DEPTH, TEAM_SIZE, NP };

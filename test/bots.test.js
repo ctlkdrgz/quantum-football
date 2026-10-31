@@ -93,6 +93,8 @@ test('BOTS / DEMO environment parsing', () => {
   assert.deepEqual(parseEnv({ DEMO: '1' }), { bots: ['turns', 'turns'], params: {} });
   assert.deepEqual(parseEnv({}), { bots: [null, null], params: {} });
   assert.deepEqual(parseEnv({ PARAMS: '{"kick":0.5}' }).params, { kick: 0.5 });
+  assert.deepEqual(parseEnv({ PRESET: 'additive', PARAMS: '{"kick":1}' }).params, { additive: 1, kick: 1 });
+  assert.throws(() => parseEnv({ PRESET: 'nope' }), /unknown preset/);
   assert.throws(() => parseEnv({ BOTS: 'nope,-' }), /unknown bot nope/);
 });
 
