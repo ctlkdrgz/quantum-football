@@ -51,10 +51,38 @@ test('lanes: each player runs sideways inside its own quarter of the length', ()
   assert.deepEqual(team(m, 1).map((p) => p.stance), [1, 1, 0, 0]); // mirrored: player 0 starts nearest its own goal too
 });
 
+test('relay: a passer behind the ball and three stones spaced toward the goal', () => {
+  const m = play(['relay', 'relay'], 10);
+  const c = (q) => [q.x, q.y];
+  for (const tm of [0, 1]) {
+    const [pa, ...stones] = team(m, tm), d = tm === 0 ? 1 : -1;
+    stones.forEach((s) => assert.equal(s.stance, 0));
+    assert.ok(stones.every((s, n) => n === 0 || (s.x - stones[n - 1].x) * d > 3), 'stones ordered toward the goal ' + stones.map((s) => s.x.toFixed(0)));
+    assert.ok((stones[0].x - pa.x) * d > 8, 'passer is behind the first stone');
+    assert.ok(c(pa).every(Number.isFinite));
+  }
+});
+
+test('plow: four walls advance abreast toward the goal and keep 12 m behind the ball', () => {
+  const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; m.setParam('threshold', 0.9);
+  const start = [team(m, 0)[0].x, team(m, 1)[0].x];
+  for (let k = 0; k < 30 * 5; k++) { drive(m, ['plow', 'plow']); m.step(1 / 30); }
+  assert.ok(team(m, 0)[0].x > start[0] + 5 && team(m, 1)[0].x < start[1] - 5, 'advancing');
+  for (let k = 0; k < 30 * 30; k++) { drive(m, ['plow', 'plow']); m.step(1 / 30); }
+  for (const tm of [0, 1]) {
+    const xs = team(m, tm).map((p) => p.x);
+    assert.ok(Math.max(...xs) - Math.min(...xs) < 3, 'abreast ' + xs);
+    team(m, tm).forEach((p) => assert.equal(p.stance, 1));
+  }
+  assert.ok(team(m, 0)[0].y < 10 && team(m, 0)[3].y > 40, 'spread over the width');
+  const mk = new Match(); mk.setPresent(0, true); mk.setPresent(1, true); mk.phase = 'playing';
+  mk.players[0].x = 84; drive(mk, ['plow', null]); assert.equal(mk.players[0].vx, 0, 'holds at the stop line'); // 14 m from the goal
+});
+
 test('turns: a scripted match with the default settings runs without trouble and the wave stays valid', () => {
   const m = play(['turns', 'fortress'], 40);
   assert.ok(m.R.every(Number.isFinite));
-  assert.deepEqual(Object.keys(STRATEGIES).sort(), ['fortress', 'lanes', 'receiver', 'shadow', 'turns']);
+  assert.deepEqual(Object.keys(STRATEGIES).sort(), ['fortress', 'lanes', 'plow', 'receiver', 'relay', 'shadow', 'turns']);
   drive(m); // default: turns vs turns
   drive(m, [null, 'lanes']); // a null team is left alone
 });

@@ -115,7 +115,7 @@ function start(port, opts = {}) {
   return new Promise((resolve) => server.listen(port, () => resolve(server)));
 }
 
-// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks strategies: turns receiver fortress shadow lanes.
+// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks strategies: turns receiver fortress shadow lanes relay plow.
 // DEMO=1 is BOTS=turns,turns with easier physics so that the bots score. With BOTS on both teams the same easier physics apply.
 function parseEnv(env) {
   const list = (env.BOTS || (env.DEMO ? 'turns,turns' : '')).split(',').map((s) => (s && s !== '-' ? s : null));

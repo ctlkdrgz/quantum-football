@@ -5,6 +5,8 @@
 //   fortress  all four players in defense stance around our own goal, facing the ball, to deflect everything
 //   shadow    two players mark the two most advanced opponents; the other two attack with passes
 //   lanes     the four players run sideways, each in its own quarter of the pitch length (two defend, two attack)
+//   relay     a bucket brigade: player 0 passes from behind the ball, players 1-3 stand as stepping stones on the way to the goal, in attack stance
+//   plow      the four players form a wall line (defense stance) and advance together, pushing the wave in front of them toward the goal
 const { W, H, N, TEAM_SIZE } = require('./sim');
 
 function centroid(m) {
@@ -92,6 +94,29 @@ const STRATEGIES = {
       if (p.y < 5) st.dir[n] = 1; else if (p.y > H - 5) st.dir[n] = -1;
       m.setOrder(i, 0, st.dir[n] * Math.min(8, m.params.runSpeed)); // sideways only
     }
+  },
+
+  relay(m, t, c) {
+    const k = ctx(t), gx = W - k.own;
+    const L = Math.hypot(gx - c.x, H / 2 - c.y) || 1, ux = (gx - c.x) / L, uy = (H / 2 - c.y) / L;
+    const p = m.players[k.base], tx = c.x - ux * 5, ty = c.y - uy * 5;
+    m.setStance(k.base, Math.hypot(p.x - tx, p.y - ty) < 3 ? 2 : 0); goTo(m, k.base, tx, ty, ux, uy);
+    [1, 2, 3].forEach((n) => { // stones every 12 m toward the goal; they never go past 8 m from the goal line
+      const i = k.base + n, d = Math.min(12 * n, Math.max(0, L - 8));
+      m.setStance(i, 0); goTo(m, i, c.x + ux * d, c.y + uy * d, ux, uy);
+    });
+  },
+
+  plow(m, t, c) {
+    const k = ctx(t), stopX = W - k.own - k.d * 14;
+    [0.12, 0.37, 0.63, 0.88].forEach((fy, n) => {
+      const i = k.base + n, p = m.players[i];
+      // advance at 5 m/s, faster if we have fallen behind the ball; hold at the stop line
+      const behind = (c.x - k.d * 12 - p.x) * k.d, atStop = (stopX - p.x) * k.d <= 0;
+      const vx = atStop ? 0 : k.d * clamp(5 + behind * 0.5, 0, 9);
+      m.setStance(i, 1); m.setOrder(i, vx, (fy * H - p.y) * 2);
+      if (!vx) m.face(i, k.d, 0);
+    });
   },
 };
 

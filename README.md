@@ -31,5 +31,7 @@ Both teams bots: everybody only watches, with easier physics (time speed 8, thre
 | `fortress` | All four in defense stance around our own goal, facing the ball, to deflect everything |
 | `shadow` | Players 1-2 each stand between one of the two most advanced opponents and our goal (wall on); players 3-4 attack with passes |
 | `lanes` | All four run sideways, each in its own quarter of the pitch length; the two nearest our goal defend, the other two attack |
+| `relay` | A bucket brigade: player 1 passes from behind the ball; players 2-4 stand as attack-stance stepping stones every 12 m toward the goal |
+| `plow` | All four form a wall line across the pitch and advance abreast, 12 m behind the ball, pushing the wave toward the goal like a piston |
 
 Example: `BOTS=shadow,- node server.js` and play red against the shadow bot.
