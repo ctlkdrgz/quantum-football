@@ -11,7 +11,8 @@ const { W, H, N, TEAM_SIZE } = require('./sim');
 
 function centroid(m) {
   let sx = 0, sy = 0;
-  for (let i = 0; i < N; i++) { const p = m.R[i] * m.R[i] + m.I[i] * m.I[i]; sx += ((i % W) + 0.5) * p; sy += (Math.floor(i / W) + 0.5) * p; }
+  const D = m.density();
+  for (let i = 0; i < N; i++) { const p = D[i]; sx += ((i % W) + 0.5) * p; sy += (Math.floor(i / W) + 0.5) * p; }
   return { x: sx, y: sy };
 }
 

@@ -8,7 +8,7 @@ const playing = () => { const m = new Match(); m.setPresent(0, true); m.setPrese
 const quiet = (m) => { m.setParam('wallHeight', 0); m.setParam('wellDepth', 0); for (let i = 0; i < NP; i++) m.setStance(i, 1); };
 const run = (m, secs) => { for (let k = 0; k < secs * 30; k++) m.step(1 / 30); };
 const centroidX = (m) => { let s = 0; for (let i = 0; i < N; i++) s += ((i % W) + 0.5) * (m.R[i] ** 2 + m.I[i] ** 2); return s; };
-const total = (m) => { let s = 0; for (let i = 0; i < N; i++) s += m.R[i] ** 2 + m.I[i] ** 2; return s; };
+const total = (m) => { let s = 0; for (let i = 0; i < m.gn; i++) s += m.R[i] ** 2 + m.I[i] ** 2; return s; };
 
 test('total probability stays 1 and nothing blows up', () => {
   const m = playing(); m.setParam('timeScale', 12); m.setParam('wellDepth', 3); m.setParam('wallHeight', 4);
@@ -126,4 +126,55 @@ test('characteristic length: uniform ball = pitch length, lowest mode 2/3, kick-
   assert.ok(Math.abs(k.characteristicLength() - W / 2) < 3, 'kick-off length ' + k.characteristicLength());
   k.R.fill(0); k.I.fill(0); assert.equal(k.characteristicLength(), 0);
   assert.equal(new Match().snapshot().length > 0, true);
+});
+
+test('waves across the width: lowest mode 0.5, a plane wave of 3 wavelengths reads 3', () => {
+  const m = new Match();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const k = 2 * Math.PI * 3 / W; m.R[y * W + x] = Math.cos(k * x); m.I[y * W + x] = Math.sin(k * x); }
+  assert.ok(Math.abs(m.wavesAcrossWidth() - 3) < 0.05);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { m.R[y * W + x] = Math.sin(Math.PI * (x + 1) / (W + 1)); m.I[y * W + x] = 0; }
+  assert.ok(Math.abs(m.wavesAcrossWidth() - 0.5) < 0.02);
+  m.R.fill(0); m.I.fill(0); assert.equal(m.wavesAcrossWidth(), 0);
+});
+
+test('additive walls: probability is conserved and a rebound never makes a node at the wall', () => {
+  const peakAtWall = (additive) => {
+    const m = new Match(); m.setParam('additive', additive); m.setParam('packetWidth', 5); m.setParam('attenuation', 0); m.kickoff();
+    m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing';
+    for (let i = 0; i < 8; i++) m.setStance(i, 1);
+    m.setParam('wallHeight', 0); m.setParam('wellDepth', 0);
+    // give the packet momentum toward the left wall: phase ramp over the whole grid (torus-safe: whole number of waves not needed, ramp is local to the packet)
+    for (let y = 0; y < m.gh; y++) for (let x = 0; x < m.gw; x++) {
+      const th = -0.35 * (x + 0.5 - W / 2), c = Math.cos(th), s = Math.sin(th), r = m.R[y * m.gw + x], q = m.I[y * m.gw + x];
+      m.R[y * m.gw + x] = r * c - q * s; m.I[y * m.gw + x] = r * s + q * c;
+    }
+    m.normalize();
+    let ratio = 0;
+    for (let k = 0; k < 30 * 40; k++) {
+      m.step(1 / 30);
+      const D = m.density(); let max = 0; for (let i = 0; i < N; i++) max = Math.max(max, D[i]);
+      assert.ok(Math.abs(D.reduce((a, b) => a + b, 0) - 1) < 1e-6, 'probability conserved');
+      ratio = Math.max(ratio, D[25 * W + 0] / max);
+    }
+    return ratio;
+  };
+  const coherent = peakAtWall(0), additive = peakAtWall(1);
+  assert.ok(coherent < 0.3, 'Dirichlet wall is a node: ' + coherent);
+  assert.ok(additive > 0.6, 'additive rebound piles up at the wall: ' + additive);
+});
+
+test('additive mode: grid switches at kick-off, players still act, mass and goals still work', () => {
+  const m = playing(); m.setParam('additive', 1); assert.equal(m.add, false); m.kickoff(); assert.equal(m.add, true);
+  assert.equal(m.gn, 4 * N);
+  for (let i = 0; i < 4; i++) m.setStance(i, 2);
+  for (let i = 4; i < 8; i++) m.setStance(i, 1);
+  m.setParam('timeScale', 12); run(m, 10);
+  assert.ok(Math.abs(total(m) - 1) < 1e-9 && m.R.every(Number.isFinite));
+  m.setParam('attenuation', 0.5); run(m, 1); // smoothing wraps around on the torus too
+  const ln = m.characteristicLength(); assert.ok(ln > 0 && ln <= W);
+  m.R.fill(0); m.I.fill(0);
+  for (let y = 20; y < 30; y++) for (let x = W - GOAL_DEPTH; x < W - 1; x++) m.R[y * m.gw + x] = 1;
+  m.normalize(); m.phase = 'playing'; m.step(1 / 30);
+  assert.deepEqual(m.score, [1, 0]);
+  m.setParam('additive', 0); m.kickoff(); assert.equal(m.gn, N);
 });

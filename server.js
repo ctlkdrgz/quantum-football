@@ -49,6 +49,8 @@ function makeParser(sock, onText) {
 function start(port, opts = {}) {
   const match = new Match();
   const botNames = opts.bots || [null, null]; // strategy per team, or null for a human
+  for (const [k, val] of Object.entries(opts.params || {})) match.setParam(k, val);
+  match.kickoff(); // some parameters (packet width, wall mode) take effect at kick-off
   botNames.forEach((b, t) => { if (b) match.setPresent(t, true); });
   const clients = new Set(); // { sock, slot }
 
@@ -116,11 +118,12 @@ function start(port, opts = {}) {
 
 // BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks strategies: turns receiver fortress shadow lanes relay plow.
 // DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.
+// PARAMS='{"kick":0.5,"additive":1}' overrides slider defaults at start (JSON).
 function parseEnv(env) {
   const list = (env.BOTS || (env.DEMO ? 'turns,turns' : '')).split(',').map((s) => (s && s !== '-' ? s : null));
   const bots = [list[0] || null, list[1] || null];
   bots.forEach((b) => { if (b && !STRATEGIES[b]) throw new Error('unknown bot ' + b + '; have ' + Object.keys(STRATEGIES).join(', ')); });
-  return { bots };
+  return { bots, params: env.PARAMS ? JSON.parse(env.PARAMS) : {} };
 }
 module.exports = { start, parseEnv };
 if (require.main === module) {

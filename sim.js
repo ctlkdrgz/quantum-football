@@ -3,6 +3,10 @@
 // The ball is a complex wave function psi = R + iI on a W x H grid (1 cell = 1 m),
 // evolving under the Schroedinger equation with hbar = 1:  i dpsi/dt = (-(1/2m) lap + V) psi
 // with hard (reflecting) walls. Players act on psi through the potential V and phase kicks.
+// Two wall modes (param `additive`, applied at the next kick-off):
+//   0 coherent: Dirichlet walls. The reflected wave interferes with the incident one (nodes, standing waves).
+//   1 additive: the pitch is unfolded into a mirrored 2W x 2H torus. psi evolves freely there and the density seen on the pitch is
+//     the SUM of the densities of the four mirror images: a rebound adds probability, it never cancels it (no destructive interference).
 
 const W = 100;
 const H = 50;
@@ -28,6 +32,7 @@ const PARAMS = {
   reach:       { min: 1.5,  max: 12,   def: 8,    step: 0.1,  label: 'Player reach (m)' },
   wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Attack: well depth' },
   wallHeight:  { min: 0,    max: 4,    def: 3,    step: 0.05, label: 'Defense: wall height' },
+  additive:    { min: 0,    max: 1,    def: 0,    step: 1,    label: 'Walls: coherent (0) / additive (1), next kick-off' },
   kick:        { min: 0,    max: 3,    def: 2,    step: 0.05, label: 'Kick strength (momentum/s)' },
 };
 
@@ -37,11 +42,13 @@ class Match {
   constructor() {
     this.params = {};
     for (const k of Object.keys(PARAMS)) this.params[k] = PARAMS[k].def;
-    this.R = new Float64Array(N);
-    this.I = new Float64Array(N);
-    this.V = new Float64Array(N);
-    this.A = new Float64Array(N); // scratch
-    this.B = new Float64Array(N); // scratch
+    const GN = 4 * N; // room for the unfolded 2W x 2H torus
+    this.R = new Float64Array(GN);
+    this.I = new Float64Array(GN);
+    this.V = new Float64Array(GN);
+    this.A = new Float64Array(GN); // scratch
+    this.D = new Float64Array(N); // density on the pitch (folded in additive mode)
+    this.setGrid(false);
     this.present = [false, false];
     this.score = [0, 0];
     // players 0-3 are team 0 (attack right), 4-7 team 1 (attack left). v = velocity order (m/s), h = heading.
@@ -57,7 +64,7 @@ class Match {
   setParam(k, v) {
     const d = PARAMS[k];
     if (!d || typeof v !== 'number' || !Number.isFinite(v)) return false;
-    this.params[k] = clamp(v, d.min, d.max);
+    this.params[k] = k === 'additive' ? Math.round(clamp(v, 0, 1)) : clamp(v, d.min, d.max);
     if (k === 'matchSeconds' && this.phase !== 'playing') this.remaining = this.params.matchSeconds;
     return true;
   }
@@ -101,6 +108,13 @@ class Match {
     if (s === 0 || s === 1 || s === 2) this.players[i].stance = s;
   }
 
+  setGrid(add) {
+    this.add = add;
+    this.gw = add ? 2 * W : W;
+    this.gh = add ? 2 * H : H;
+    this.gn = this.gw * this.gh;
+  }
+
   kickoff() {
     const slots = [[0.15, 0.3], [0.15, 0.7], [0.3, 0.2], [0.3, 0.8]]; // x, y as fractions, for team 0
     this.players.forEach((p, i) => {
@@ -108,12 +122,14 @@ class Match {
       p.x = (t === 0 ? fx : 1 - fx) * W; p.y = fy * H;
       p.vx = p.vy = 0; p.hx = t === 0 ? 1 : -1; p.hy = 0;
     });
-    const s = this.params.packetWidth;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const dx = x + 0.5 - W / 2, dy = y + 0.5 - H / 2;
-        this.R[y * W + x] = Math.exp(-(dx * dx + dy * dy) / (4 * s * s));
-        this.I[y * W + x] = 0;
+    if (!!this.params.additive !== this.add) this.setGrid(!!this.params.additive);
+    const { gw, gh } = this, s = this.params.packetWidth;
+    const wrap = (d, n) => d - n * Math.round(d / n); // shortest distance on the torus (a no-op inside the pitch)
+    this.R.fill(0); this.I.fill(0);
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        const dx = wrap(x + 0.5 - W / 2, gw), dy = wrap(y + 0.5 - H / 2, gh);
+        this.R[y * gw + x] = Math.exp(-(dx * dx + dy * dy) / (4 * s * s));
       }
     }
     this.normalize();
@@ -122,24 +138,34 @@ class Match {
 
   normalize() {
     let sum = 0;
-    for (let i = 0; i < N; i++) sum += this.R[i] * this.R[i] + this.I[i] * this.I[i];
+    for (let i = 0; i < this.gn; i++) sum += this.R[i] * this.R[i] + this.I[i] * this.I[i];
     const f = sum > 0 ? 1 / Math.sqrt(sum) : 0;
-    for (let i = 0; i < N; i++) { this.R[i] *= f; this.I[i] *= f; }
+    for (let i = 0; i < this.gn; i++) { this.R[i] *= f; this.I[i] *= f; }
+  }
+
+  // Density of the ball on the pitch, W x H. Additive mode adds the four mirror images.
+  density() {
+    const { R, I, D, gw, gh } = this;
+    if (!this.add) { for (let i = 0; i < N; i++) D[i] = R[i] * R[i] + I[i] * I[i]; return D; }
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        let sum = 0;
+        for (const yy of [y, gh - 1 - y]) for (const xx of [x, gw - 1 - x]) { const k = yy * gw + xx; sum += R[k] * R[k] + I[k] * I[k]; }
+        D[y * W + x] = sum;
+      }
+    }
+    return D;
   }
 
   // Probability of finding the ball in [left goal, right goal].
   goalProbabilities() {
-    const gh = this.params.goalHeight;
+    const D = this.density(), gh = this.params.goalHeight;
     const y0 = H / 2 - gh / 2, y1 = H / 2 + gh / 2;
     let l = 0, r = 0;
     for (let y = 0; y < H; y++) {
       const cy = y + 0.5;
       if (cy < y0 || cy > y1) continue;
-      for (let x = 0; x < GOAL_DEPTH; x++) {
-        const a = y * W + x, b = y * W + (W - 1 - x);
-        l += this.R[a] * this.R[a] + this.I[a] * this.I[a];
-        r += this.R[b] * this.R[b] + this.I[b] * this.I[b];
-      }
+      for (let x = 0; x < GOAL_DEPTH; x++) { l += D[y * W + x]; r += D[y * W + (W - 1 - x)]; }
     }
     return [l, r];
   }
@@ -147,11 +173,26 @@ class Match {
   // Characteristic length of the ball along the long axis (metres): participation length 1 / sum(rho_x^2),
   // where rho_x is the density summed over the pitch height. A uniform ball of width L gives L; a Gaussian of std s gives 3.54 s.
   characteristicLength() {
-    const col = this.A; col.fill(0);
-    for (let i = 0; i < N; i++) col[i % W] += this.R[i] * this.R[i] + this.I[i] * this.I[i];
+    const D = this.density(), col = new Float64Array(W);
+    for (let i = 0; i < N; i++) col[i % W] += D[i];
     let q = 0;
     for (let x = 0; x < W; x++) q += col[x] * col[x];
     return q > 0 ? 1 / q : 0;
+  }
+
+  // Number of waves across the pitch length: W * k_rms / (2 pi), with k_rms the RMS wavenumber of psi along x (finite differences).
+  // The lowest standing mode reads 0.5; a plane wave with 3 wavelengths across the pitch reads 3.
+  wavesAcrossWidth() {
+    const { R, I, gw, gh } = this;
+    let num = 0, den = 0;
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        const i = y * gw + x;
+        den += R[i] * R[i] + I[i] * I[i];
+        if (x < gw - 1) { const a = R[i + 1] - R[i], b = I[i + 1] - I[i]; num += a * a + b * b; }
+      }
+    }
+    return den > 0 ? W * Math.sqrt(num / den) / (2 * Math.PI) : 0;
   }
 
   step(dt) {
@@ -208,11 +249,23 @@ class Match {
     this.timer = GOAL_PAUSE_S;
   }
 
-  // Run fn(index, dx, dy) for every cell centre within rad of (cx, cy).
+  // Run fn(index, dx, dy) for every cell centre within rad of (cx, cy). On the torus the box wraps around.
   forBox(cx, cy, rad, fn) {
-    const x0 = Math.max(0, Math.floor(cx - rad)), x1 = Math.min(W - 1, Math.ceil(cx + rad));
-    const y0 = Math.max(0, Math.floor(cy - rad)), y1 = Math.min(H - 1, Math.ceil(cy + rad));
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) fn(y * W + x, x + 0.5 - cx, y + 0.5 - cy);
+    const { gw, gh, add } = this;
+    const rx = add ? Math.min(rad, gw / 2 - 1) : rad, ry = add ? Math.min(rad, gh / 2 - 1) : rad;
+    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+      for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+        let xi = x, yi = y;
+        if (add) { xi = ((x % gw) + gw) % gw; yi = ((y % gh) + gh) % gh; } else if (x < 0 || x >= gw || y < 0 || y >= gh) continue;
+        fn(yi * gw + xi, x + 0.5 - cx, y + 0.5 - cy);
+      }
+    }
+  }
+
+  // Call fn for a thing at (cx, cy) heading (hx, hy): once on the pitch, and in additive mode also for its three mirror images.
+  eachImage(cx, cy, hx, hy, fn) {
+    fn(cx, cy, hx, hy);
+    if (this.add) { fn(-cx, cy, -hx, hy); fn(cx, -cy, hx, -hy); fn(-cx, -cy, -hx, -hy); }
   }
 
   // Multiply psi by exp(i kappa g(r) d.r): a momentum kick of kappa along d, weighted by amplitude.
@@ -230,49 +283,58 @@ class Match {
 
   buildPotential(dtReal) {
     const { V, params: P } = this;
-    V.fill(0);
+    V.fill(0, 0, this.gn);
     const sig = P.reach * 0.6;
     for (const p of this.players) {
       if (p.stance === STANCE.ATTACK) {
         // Moving attractive well: carries the wave along with the player, plus a gentle forward push.
-        this.forBox(p.x, p.y, 4 * sig, (i, dx, dy) => { V[i] -= P.wellDepth * Math.exp(-(dx * dx + dy * dy) / (2 * sig * sig)); });
-        this.kickPhase(p.x, p.y, p.hx, p.hy, sig, 0.15 * P.kick * dtReal);
+        this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy) => {
+          this.forBox(cx, cy, 4 * sig, (i, dx, dy) => { V[i] -= P.wellDepth * Math.exp(-(dx * dx + dy * dy) / (2 * sig * sig)); });
+          this.kickPhase(cx, cy, hx, hy, sig, 0.15 * P.kick * dtReal);
+        });
       } else if (p.stance === STANCE.DEFENSE) {
         // Repulsive wall in front of the player, perpendicular to heading.
         const su = 0.35 * P.reach, sw = 1.2 * P.reach, off = P.reach;
-        this.forBox(p.x + p.hx * off, p.y + p.hy * off, 4 * sw, (i, dx, dy) => {
-          const u = dx * p.hx + dy * p.hy, w = -dx * p.hy + dy * p.hx;
-          V[i] += P.wallHeight * Math.exp(-(u * u) / (2 * su * su) - (w * w) / (2 * sw * sw));
+        this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy) => {
+          this.forBox(cx + hx * off, cy + hy * off, 4 * sw, (i, dx, dy) => {
+            const u = dx * hx + dy * hy, w = -dx * hy + dy * hx;
+            V[i] += P.wallHeight * Math.exp(-(u * u) / (2 * su * su) - (w * w) / (2 * sw * sw));
+          });
         });
       } else {
         // Pass: strong forward kick just ahead of the player.
-        this.kickPhase(p.x + p.hx * P.reach, p.y + p.hy * P.reach, p.hx, p.hy, 4 * sig, 0.7 * P.kick * dtReal);
+        this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy) => this.kickPhase(cx + hx * P.reach, cy + hy * P.reach, hx, hy, 4 * sig, 0.7 * P.kick * dtReal));
       }
     }
   }
 
-  // out = H u  (Dirichlet boundaries: cells outside the field are zero)
+  // Neighbour sum; out of range is 0 (Dirichlet) or wraps around (torus).
+  neighbours(u, x, y, i) {
+    const { gw, gh, add } = this;
+    return (x > 0 ? u[i - 1] : add ? u[i + gw - 1] : 0) + (x < gw - 1 ? u[i + 1] : add ? u[i - gw + 1] : 0) +
+      (y > 0 ? u[i - gw] : add ? u[i + (gh - 1) * gw] : 0) + (y < gh - 1 ? u[i + gw] : add ? u[i - (gh - 1) * gw] : 0);
+  }
+
+  // out = H u
   applyH(u, out) {
-    const D = 1 / (2 * this.params.mass), V = this.V;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const i = y * W + x, c = u[i];
-        const s = (x > 0 ? u[i - 1] : 0) + (x < W - 1 ? u[i + 1] : 0) + (y > 0 ? u[i - W] : 0) + (y < H - 1 ? u[i + W] : 0);
-        out[i] = -D * (s - 4 * c) + V[i] * c;
+    const D = 1 / (2 * this.params.mass), V = this.V, { gw, gh } = this;
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        const i = y * gw + x, c = u[i];
+        out[i] = -D * (this.neighbours(u, x, y, i) - 4 * c) + V[i] * c;
       }
     }
   }
 
   smooth(u, eps) {
-    const t = this.A;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const i = y * W + x, c = u[i];
-        const s = (x > 0 ? u[i - 1] : 0) + (x < W - 1 ? u[i + 1] : 0) + (y > 0 ? u[i - W] : 0) + (y < H - 1 ? u[i + W] : 0);
-        t[i] = c + eps * (s - 4 * c);
+    const t = this.A, { gw, gh } = this;
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        const i = y * gw + x, c = u[i];
+        t[i] = c + eps * (this.neighbours(u, x, y, i) - 4 * c);
       }
     }
-    u.set(t);
+    for (let i = 0; i < this.gn; i++) u[i] = t[i];
   }
 
   evolve(dt) {
@@ -281,8 +343,8 @@ class Match {
     const n = Math.ceil(gdt / 0.08), h = gdt / n;
     const { R, I, A } = this;
     for (let k = 0; k < n; k++) { // Visscher leapfrog: norm-preserving to second order
-      this.applyH(I, A); for (let i = 0; i < N; i++) R[i] += h * A[i];
-      this.applyH(R, A); for (let i = 0; i < N; i++) I[i] -= h * A[i];
+      this.applyH(I, A); for (let i = 0; i < this.gn; i++) R[i] += h * A[i];
+      this.applyH(R, A); for (let i = 0; i < this.gn; i++) I[i] -= h * A[i];
     }
     const eps = Math.min(0.24, this.params.attenuation * 0.5 * gdt);
     if (eps > 0) { this.smooth(R, eps); this.smooth(I, eps); }
@@ -291,9 +353,9 @@ class Match {
 
   // Wire format for clients: density quantised to bytes (sqrt scale, relative to the peak).
   snapshot() {
-    const rho = this.A; // scratch is free between steps
+    const rho = this.density();
     let max = 0;
-    for (let i = 0; i < N; i++) { rho[i] = this.R[i] * this.R[i] + this.I[i] * this.I[i]; if (rho[i] > max) max = rho[i]; }
+    for (let i = 0; i < N; i++) if (rho[i] > max) max = rho[i];
     const dens = new Uint8Array(N);
     if (max > 0) for (let i = 0; i < N; i++) dens[i] = Math.round(255 * Math.sqrt(rho[i] / max));
     const presence = this.players.map((p) => {
@@ -305,7 +367,7 @@ class Match {
     return {
       phase: this.phase, timer: this.timer, remaining: this.remaining,
       score: this.score.slice(), lastScorer: this.lastScorer, present: this.present.slice(),
-      goalP: this.goalP.slice(), peak: max, presence, length: this.characteristicLength(),
+      goalP: this.goalP.slice(), peak: max, presence, length: this.characteristicLength(), waves: this.wavesAcrossWidth(),
       players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance })),
       dens,
     };
