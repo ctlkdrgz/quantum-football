@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { Match, PARAMS, W, H, GOAL_DEPTH } = require('./sim');
+const bots = require('./bots');
 
 const PUBLIC = path.join(__dirname, 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -44,8 +45,9 @@ function makeParser(sock, onText) {
   };
 }
 
-function start(port) {
+function start(port, opts = {}) {
   const match = new Match();
+  if (opts.demo) { match.setPresent(0, true); match.setPresent(1, true); match.setParam('timeScale', 8); match.setParam('threshold', 0.1); match.setParam('wallHeight', 1); match.setParam('kick', 2); }
   const clients = new Set(); // { sock, slot }
 
   const send = (c, obj) => { if (!c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
@@ -69,7 +71,7 @@ function start(port) {
       'Sec-WebSocket-Accept: ' + crypto.createHash('sha1').update(key + GUID).digest('base64') + '\r\n\r\n');
     sock.setNoDelay(true);
     const taken = new Set([...clients].map((c) => c.slot));
-    const c = { sock, slot: [0, 1].find((s) => !taken.has(s)) ?? -1 };
+    const c = { sock, slot: opts.demo ? -1 : [0, 1].find((s) => !taken.has(s)) ?? -1 }; // DEMO: bots play, browsers only watch
     clients.add(c);
     if (c.slot >= 0) match.setPresent(c.slot, true);
     hello(c);
@@ -96,6 +98,7 @@ function start(port) {
   let last = Date.now();
   const timer = setInterval(() => {
     const now = Date.now();
+    if (opts.demo) bots.drive(match);
     match.step(Math.min(0.1, (now - last) / 1000));
     last = now;
     if (!clients.size) return;
@@ -111,5 +114,5 @@ function start(port) {
 module.exports = { start };
 if (require.main === module) {
   const port = Number(process.env.PORT) || 8080;
-  start(port).then(() => console.log('Quantum Football on http://localhost:' + port));
+  start(port, { demo: !!process.env.DEMO }).then(() => console.log('Quantum Football on http://localhost:' + port));
 }

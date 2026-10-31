@@ -17,3 +17,7 @@ Move the mouse: your player runs to the cursor. Keys **1** Attack (well carries 
 Sliders on the right change the physics for both players.
 
 Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed).
+
+## Demo with dummy AIs
+`DEMO=1 node server.js` runs two scripted bots (they take turns kicking while the other defends); every browser only watches.
+Demo mode sets easier parameters (time speed 8, threshold 0.1, weak walls, strong kicks) so goals happen. See `bots.js`.
