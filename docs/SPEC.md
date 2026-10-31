@@ -1,6 +1,7 @@
 # Quantum Football: mechanics
 
 Two players, one wave-function ball, a 100 x 50 m pitch with reflecting walls. KISS: one match, one server, no lobby.
+The equations and numerics behind this are in [PHYSICS.md](PHYSICS.md).
 
 ## Match
 - One server. The first two browsers to connect are player 0 (blue, attacks the right goal) and player 1 (red, attacks the left goal).
