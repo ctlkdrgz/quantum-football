@@ -17,7 +17,7 @@ You command four players. Drag from one of your players: the drag is its velocit
 **2** Defense (wall repels it), **3** Pass (strong forward kick) set the selected player's stance; **Q/W/E/R** select players 1-4.
 Sliders on the right change the physics for both players.
 
-Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed).
+Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed), [docs/PLOT-ENGINE.md](docs/PLOT-ENGINE.md) (the ball's characteristic length as a story and pacing device).
 
 ## Bots
 `BOTS=<team 0>,<team 1> node server.js` fills a team with a scripted strategy; `-` or nothing leaves it to a human. The human takes the free team.
