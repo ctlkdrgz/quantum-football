@@ -26,6 +26,12 @@ test('first two browsers play, the third spectates, and a free slot is reused', 
   assert.equal(res.status, 200);
   assert.equal((await fetch('http://localhost:' + port + '/..%2Fserver.js')).status, 404);
 
+  a.ws.send(JSON.stringify({ t: 'order', p: 2, vx: 6, vy: 0 }));
+  b.ws.send(JSON.stringify({ t: 'order', p: 9, vx: 6, vy: 0 })); // out of range: ignored
+  b.ws.send(JSON.stringify({ t: 'stance', p: 1, s: 2 }));
+  await until(() => a.last.players[2].vx > 0 && a.last.players[5].stance === 2); // a commands 0-3, b commands 4-7
+  assert.equal(a.last.players.filter((p) => p.vx > 0).length, 1);
+
   a.ws.close(); // player 0 leaves: spectator takes the slot
   await until(() => c.hello.slot === 0);
   [b, c].forEach((x) => x.ws.close());

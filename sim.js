@@ -8,6 +8,8 @@ const W = 100;
 const H = 50;
 const N = W * H;
 const GOAL_DEPTH = 6;
+const TEAM_SIZE = 4;
+const NP = 2 * TEAM_SIZE;
 const COUNTDOWN_S = 3;
 const GOAL_PAUSE_S = 2.5;
 const OVER_PAUSE_S = 10;
@@ -22,7 +24,7 @@ const PARAMS = {
   goalHeight:   { min: 6,   max: 40,  def: 20,   step: 1,    label: 'Goal height (m)' },
   threshold:    { min: 0.05, max: 0.9, def: 0.15, step: 0.01, label: 'Goal threshold (probability)' },
   matchSeconds: { min: 30,  max: 600, def: 180,  step: 10,   label: 'Match duration (s)' },
-  runSpeed:     { min: 2,   max: 30,  def: 12,   step: 0.5,  label: 'Player run speed (m/s)' },
+  runSpeed:     { min: 2,   max: 30,  def: 12,   step: 0.5,  label: 'Player max speed (m/s)' },
   reach:        { min: 1.5, max: 8,   def: 4,    step: 0.1,  label: 'Player reach (m)' },
   wellDepth:    { min: 0,   max: 3,   def: 1,    step: 0.05, label: 'Attack: well depth' },
   wallHeight:   { min: 0,   max: 4,   def: 3,    step: 0.05, label: 'Defense: wall height' },
@@ -42,7 +44,8 @@ class Match {
     this.B = new Float64Array(N); // scratch
     this.present = [false, false];
     this.score = [0, 0];
-    this.players = [0, 1].map(() => ({ x: 0, y: H / 2, tx: 0, ty: H / 2, hx: 1, hy: 0, stance: STANCE.ATTACK, stamina: 1 }));
+    // players 0-3 are team 0 (attack right), 4-7 team 1 (attack left). v = velocity order (m/s), h = heading.
+    this.players = Array.from({ length: NP }, (_, i) => ({ x: 0, y: H / 2, vx: 0, vy: 0, hx: i < TEAM_SIZE ? 1 : -1, hy: 0, stance: STANCE.ATTACK }));
     this.phase = 'waiting';
     this.timer = 0;
     this.remaining = this.params.matchSeconds;
@@ -79,10 +82,19 @@ class Match {
     this.timer = COUNTDOWN_S;
   }
 
-  setTarget(i, x, y) {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    this.players[i].tx = clamp(x, 0, W);
-    this.players[i].ty = clamp(y, 0, H);
+  // Order: a velocity vector. Shorter than 0.5 m/s means "stop"; the heading then stays as it was.
+  setOrder(i, vx, vy) {
+    if (!Number.isFinite(vx) || !Number.isFinite(vy)) return;
+    const p = this.players[i], len = Math.hypot(vx, vy);
+    if (len < 0.5) { p.vx = p.vy = 0; return; }
+    const sp = Math.min(len, this.params.runSpeed);
+    p.vx = vx / len * sp; p.vy = vy / len * sp;
+    p.hx = vx / len; p.hy = vy / len;
+  }
+
+  face(i, dx, dy) {
+    const len = Math.hypot(dx, dy);
+    if (len > 0) { this.players[i].hx = dx / len; this.players[i].hy = dy / len; }
   }
 
   setStance(i, s) {
@@ -90,12 +102,11 @@ class Match {
   }
 
   kickoff() {
+    const slots = [[0.15, 0.3], [0.15, 0.7], [0.3, 0.2], [0.3, 0.8]]; // x, y as fractions, for team 0
     this.players.forEach((p, i) => {
-      p.x = p.tx = i === 0 ? W * 0.25 : W * 0.75;
-      p.y = p.ty = H / 2;
-      p.hx = i === 0 ? 1 : -1;
-      p.hy = 0;
-      p.stamina = 1;
+      const [fx, fy] = slots[i % TEAM_SIZE], t = i < TEAM_SIZE ? 0 : 1;
+      p.x = (t === 0 ? fx : 1 - fx) * W; p.y = fy * H;
+      p.vx = p.vy = 0; p.hx = t === 0 ? 1 : -1; p.hy = 0;
     });
     const s = this.params.packetWidth;
     for (let y = 0; y < H; y++) {
@@ -166,13 +177,13 @@ class Match {
   }
 
   movePlayers(dt) {
+    const max = this.params.runSpeed;
     for (const p of this.players) {
-      const dx = p.tx - p.x, dy = p.ty - p.y;
-      const d = Math.hypot(dx, dy);
-      if (d < 0.3) continue;
-      p.hx = dx / d; p.hy = dy / d;
-      const s = Math.min(d, this.params.runSpeed * dt);
-      p.x += p.hx * s; p.y += p.hy * s;
+      const sp = Math.hypot(p.vx, p.vy);
+      if (sp > max) { p.vx *= max / sp; p.vy *= max / sp; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.x < 0 || p.x > W) { p.x = clamp(p.x, 0, W); p.vx = 0; } // a wall stops that component
+      if (p.y < 0 || p.y > H) { p.y = clamp(p.y, 0, H); p.vy = 0; }
     }
   }
 
@@ -181,7 +192,7 @@ class Match {
     const [l, r] = this.goalP;
     const t = this.params.threshold;
     if (Math.max(l, r) <= t) return;
-    this.lastScorer = r >= l ? 0 : 1; // player 0 attacks the right goal
+    this.lastScorer = r >= l ? 0 : 1; // team 0 attacks the right goal
     this.score[this.lastScorer]++;
     this.phase = 'goal';
     this.timer = GOAL_PAUSE_S;
@@ -223,12 +234,10 @@ class Match {
           const u = dx * p.hx + dy * p.hy, w = -dx * p.hy + dy * p.hx;
           V[i] += P.wallHeight * Math.exp(-(u * u) / (2 * su * su) - (w * w) / (2 * sw * sw));
         });
-      } else if (p.stamina > 0) {
-        // Pass: strong forward kick just ahead of the player; burns stamina.
+      } else {
+        // Pass: strong forward kick just ahead of the player.
         this.kickPhase(p.x + p.hx * P.reach, p.y + p.hy * P.reach, p.hx, p.hy, 4 * sig, 0.7 * P.kick * dtReal);
-        p.stamina = Math.max(0, p.stamina - 0.6 * dtReal);
       }
-      if (p.stance !== STANCE.PASS) p.stamina = Math.min(1, p.stamina + 0.25 * dtReal);
     }
   }
 
@@ -287,10 +296,10 @@ class Match {
       phase: this.phase, timer: this.timer, remaining: this.remaining,
       score: this.score.slice(), lastScorer: this.lastScorer, present: this.present.slice(),
       goalP: this.goalP.slice(), peak: max, presence,
-      players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, stance: p.stance, stamina: p.stamina })),
+      players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance })),
       dens,
     };
   }
 }
 
-module.exports = { Match, PARAMS, STANCE, W, H, N, GOAL_DEPTH };
+module.exports = { Match, PARAMS, STANCE, W, H, N, GOAL_DEPTH, TEAM_SIZE, NP };

@@ -1,28 +1,30 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Match, W, H, N, GOAL_DEPTH } = require('../sim');
+const { Match, W, H, N, GOAL_DEPTH, NP } = require('../sim');
 
 const playing = () => { const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; return m; };
+// No player influences the wave: walls of height 0 and no wells.
+const quiet = (m) => { m.setParam('wallHeight', 0); m.setParam('wellDepth', 0); for (let i = 0; i < NP; i++) m.setStance(i, 1); };
 const run = (m, secs) => { for (let k = 0; k < secs * 30; k++) m.step(1 / 30); };
 const centroidX = (m) => { let s = 0; for (let i = 0; i < N; i++) s += ((i % W) + 0.5) * (m.R[i] ** 2 + m.I[i] ** 2); return s; };
 const total = (m) => { let s = 0; for (let i = 0; i < N; i++) s += m.R[i] ** 2 + m.I[i] ** 2; return s; };
 
 test('total probability stays 1 and nothing blows up', () => {
   const m = playing(); m.setParam('timeScale', 12); m.setParam('wellDepth', 3); m.setParam('wallHeight', 4);
-  m.setStance(0, 2); m.setTarget(0, 50, 25); m.setStance(1, 1); m.setTarget(1, 40, 25);
+  for (let i = 0; i < 4; i++) m.setStance(i, 2);
+  for (let i = 4; i < NP; i++) m.setStance(i, 1);
+  m.setOrder(0, 5, 0); m.setOrder(5, -5, 3);
   run(m, 20);
   assert.ok(Math.abs(total(m) - 1) < 1e-9);
   assert.ok(m.R.every(Number.isFinite));
 });
 
 test('a kicked packet reflects off the wall and comes back', () => {
-  const m = playing(); m.setParam('attenuation', 0); m.setParam('wellDepth', 0);
-  m.setStance(1, 0); m.setTarget(1, 95, 5);
-  m.setStance(0, 2); m.setTarget(0, 44, 25);
-  m.players[0].x = 44; m.players[0].y = 25;
+  const m = playing(); m.setParam('attenuation', 0); quiet(m);
+  m.players[0].x = 44; m.players[0].y = 25; m.setStance(0, 2); // pass from just behind the ball
   run(m, 2);
-  m.setStance(0, 0); m.setTarget(0, 0, 49);
+  m.setStance(0, 1);
   let max = 0, last = 0;
   for (let k = 0; k < 30 * 80; k++) { m.step(1 / 30); const c = centroidX(m); max = Math.max(max, c); last = c; }
   assert.ok(max > 52, 'moved right: ' + max);
@@ -30,8 +32,7 @@ test('a kicked packet reflects off the wall and comes back', () => {
 });
 
 test('an eigenmode is a stationary wave: density stays put', () => {
-  const m = playing(); m.setParam('attenuation', 0); m.setParam('wellDepth', 0); m.setParam('wallHeight', 0);
-  m.setStance(0, 1); m.setStance(1, 1); m.setTarget(0, 0, 0); m.setTarget(1, 100, 50);
+  const m = playing(); m.setParam('attenuation', 0); quiet(m);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     m.R[y * W + x] = Math.sin(2 * Math.PI * (x + 1) / (W + 1)) * Math.sin(Math.PI * (y + 1) / (H + 1)); m.I[y * W + x] = 0;
   }
@@ -79,15 +80,33 @@ test('match waits for two players and a disconnect resets everything', () => {
   assert.equal(m.phase, 'waiting'); assert.deepEqual(m.score, [0, 0]);
 });
 
-test('parameters are clamped and validated; players run at runSpeed', () => {
+test('parameters are clamped and validated', () => {
   const m = playing();
   assert.equal(m.setParam('nope', 1), false);
   assert.equal(m.setParam('mass', NaN), false);
   m.setParam('mass', 99); assert.equal(m.params.mass, 4);
-  m.setParam('runSpeed', 10); m.setTarget(0, 90, 25);
-  const x0 = m.players[0].x; run(m, 1);
-  assert.ok(Math.abs(m.players[0].x - x0 - 10) < 0.01);
-  m.setTarget(0, -50, 999); assert.deepEqual([m.players[0].tx, m.players[0].ty], [0, H]);
+});
+
+test('orders are velocity vectors, capped at max speed, stopped by walls; short orders stop', () => {
+  const m = playing(); quiet(m);
+  m.setParam('runSpeed', 10);
+  const x0 = m.players[0].x;
+  m.setOrder(0, 100, 0); assert.equal(m.players[0].vx, 10);
+  run(m, 1); assert.ok(Math.abs(m.players[0].x - x0 - 10) < 0.01);
+  m.setOrder(0, 0.1, 0.1); assert.deepEqual([m.players[0].vx, m.players[0].vy], [0, 0]);
+  assert.deepEqual([m.players[0].hx, m.players[0].hy], [1, 0], 'heading kept when stopped');
+  m.setOrder(0, NaN, 0); // ignored
+  m.setOrder(0, -3, 4); assert.deepEqual([m.players[0].vx, m.players[0].vy], [-3, 4]);
+  m.setParam('runSpeed', 2.5); run(m, 0.1); assert.ok(Math.hypot(m.players[0].vx, m.players[0].vy) <= 2.5 + 1e-9);
+  m.setOrder(0, -100, -100); run(m, 30);
+  assert.deepEqual([m.players[0].x, m.players[0].y, m.players[0].vx, m.players[0].vy], [0, 0, 0, 0]);
+  m.face(0, 0, 5); assert.deepEqual([m.players[0].hx, m.players[0].hy], [0, 1]);
+});
+
+test('each team has four players, mirrored at kick-off', () => {
+  const m = playing();
+  assert.equal(m.players.length, 8);
+  for (let k = 0; k < 4; k++) assert.ok(Math.abs(m.players[k].x + m.players[k + 4].x - W) < 1e-9 && m.players[k].y === m.players[k + 4].y);
 });
 
 test('snapshot is compact and sane', () => {

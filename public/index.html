@@ -12,7 +12,7 @@
   @media (max-width:900px){ main{ grid-template-columns:1fr; } }
   #hud { display:flex; justify-content:space-between; align-items:baseline; font-size:20px; margin-bottom:6px; }
   #hud .s0{ color:var(--p0);} #hud .s1{ color:var(--p1);} #msg{ color:var(--dim); font-size:14px; }
-  canvas { width:100%; display:block; background:#000; border-radius:6px; cursor:crosshair; }
+  canvas { touch-action:none; width:100%; display:block; background:#000; border-radius:6px; cursor:crosshair; }
   .stances { display:flex; gap:8px; margin-top:8px; }
   .stances button { flex:1; padding:8px; background:var(--panel); color:var(--fg); border:2px solid transparent; border-radius:6px; cursor:pointer; font-size:14px; }
   .stances button.on { border-color:var(--fg); }
@@ -32,9 +32,10 @@
     <div class="stances" id="stances">
       <button data-s="0">1 · Attack<br><small>well carries the ball</small></button>
       <button data-s="1">2 · Defense<br><small>wall repels the ball</small></button>
-      <button data-s="2">3 · Pass<br><small>strong kick, burns stamina</small></button>
+      <button data-s="2">3 · Pass<br><small>strong forward kick</small></button>
     </div>
-    <small>Move the mouse: your player runs to the cursor and faces the way it runs. Keys 1/2/3 pick the stance.
+    <small>You command four players. Click or drag from one of your players: the drag is its velocity vector (1 m of drag = 1 m/s), a plain click stops it.
+      The selected player's stance is set with keys 1/2/3 or the buttons; Q/W/E/R select players 1–4. Labels show number, stance (A/D/P) and how much of the ball is near that player.
       Bright = where the ball is likely to be. Bars at the goals show the probability of the ball being inside.</small>
   </section>
   <aside><h2>Parameters (shared by both players)</h2><div id="sliders"></div></aside>

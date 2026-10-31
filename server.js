@@ -5,7 +5,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { Match, PARAMS, W, H, GOAL_DEPTH } = require('./sim');
+const { Match, PARAMS, W, H, GOAL_DEPTH, TEAM_SIZE } = require('./sim');
 const bots = require('./bots');
 
 const PUBLIC = path.join(__dirname, 'public');
@@ -52,7 +52,7 @@ function start(port, opts = {}) {
 
   const send = (c, obj) => { if (!c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
   const broadcast = (obj) => clients.forEach((c) => send(c, obj));
-  const hello = (c) => send(c, { t: 'hello', slot: c.slot, defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH } });
+  const hello = (c) => send(c, { t: 'hello', slot: c.slot, defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE } });
 
   const server = http.createServer((req, res) => {
     const rel = req.url.split('?')[0] === '/' ? '/index.html' : decodeURIComponent(req.url.split('?')[0]);
@@ -80,8 +80,9 @@ function start(port, opts = {}) {
       let m;
       try { m = JSON.parse(text); } catch { return; }
       if (!m || c.slot < 0) return; // spectators only watch
-      if (m.t === 'move') match.setTarget(c.slot, m.x, m.y);
-      else if (m.t === 'stance') match.setStance(c.slot, m.s);
+      const mine = Number.isInteger(m.p) && m.p >= 0 && m.p < TEAM_SIZE ? c.slot * TEAM_SIZE + m.p : -1; // you only command your own four
+      if (m.t === 'order' && mine >= 0) match.setOrder(mine, m.vx, m.vy);
+      else if (m.t === 'stance' && mine >= 0) match.setStance(mine, m.s);
       else if (m.t === 'param' && match.setParam(m.k, m.v)) broadcast({ t: 'params', params: match.params });
     }));
     const drop = () => {

@@ -17,21 +17,26 @@ Two players, one wave-function ball, a 100 x 50 m pitch with reflecting walls. K
 - Attenuation smooths the wave each tick (damps short wavelengths), which also keeps it tame.
 
 ## Players
-- Mouse = target. The player runs toward the cursor at the run-speed parameter and stops on arrival. Orientation = last running direction.
-- "Having the ball" is not binary: it is the amplitude of psi near the player (shown as `ball N%`). Every action below acts on psi locally,
-  so it works exactly as much as the ball is there.
-- Stances (keys 1/2/3 or buttons):
+- Each side commands **four players** (team 0 blue: players 1-4, attacks right; team 1 red: attacks left). You cannot command the other side's players.
+- **Orders are velocity vectors, given by drag and drop.** Press on one of your players, drag, release: the drag vector is the player's velocity
+  (1 m of drag = 1 m/s, capped at the max-speed slider). The player keeps that velocity until a wall stops it or you give a new order.
+  A click without drag (or a drag under 0.5 m) stops it. Orientation = direction of the last order; it stays when the player stops.
+- Selecting: the player you pressed on is selected (also Q/W/E/R for players 1-4).
+- "Having the ball" is not binary: it is the amplitude of psi near the player (shown as a % label). Every action below acts on psi locally,
+  so it works exactly as much as the ball is there. Several players act at once and their effects add up.
+- Stance per player (keys 1/2/3 or buttons, applies to the selected player):
   - **Attack**: a moving attractive potential well around the player carries part of the wave along as they run, plus a gentle forward momentum push.
   - **Defense**: a repulsive potential wall in front of the player, perpendicular to their heading. It reflects and blocks the wave; running with it pushes the wave.
-  - **Pass**: a strong forward momentum kick (phase ramp `exp(i k d.r)`) over a wide window just ahead of the player. Burns stamina (1.7 s full, regenerates 4 s while not passing). Only moves the ball if the ball is in the window.
+  - **Pass**: a strong forward momentum kick (phase ramp `exp(i k d.r)`) over a wide window just ahead of the player. No stamina: it works as long as the ball is in the window
+    (the kick moves away with the player, so a running passer only gives a short push; stand still to kick hard).
 
 ## Parameters (sliders, shared by both players, clamped on the server)
 Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal height, goal threshold, match duration,
-player run speed, player reach, attack well depth, defense wall height, kick strength. Ranges and defaults: `PARAMS` in `sim.js`.
+player max speed, player reach, attack well depth, defense wall height, kick strength. Ranges and defaults: `PARAMS` in `sim.js`.
 
 ## Architecture
 - `sim.js`: pure simulation (no I/O), unit-tested. `server.js`: static files + dependency-free WebSocket, 30 Hz tick, server-authoritative.
-- `public/`: canvas client. Sends cursor position (30 Hz), stance, slider changes. Receives the density as 5000 bytes (base64) + players + score each tick.
+- `public/`: canvas client. Sends orders (`{t:'order',p,vx,vy}`), stances (`{t:'stance',p,s}`, p = 0-3 within your team) and slider changes. Receives the density as 5000 bytes (base64) + all 8 players + score each tick.
 - No npm dependencies. Node 22.
 
 ## Known rough edges / ideas

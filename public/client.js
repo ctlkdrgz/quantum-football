@@ -5,7 +5,7 @@ const msg = document.getElementById('msg');
 const COLORS = ['#4da3ff', '#ff6b5e'];
 const STANCE_NAMES = ['Attack', 'Defense', 'Pass'];
 let slot = -1, grid = { W: 100, H: 50, goalDepth: 6 }, params = {}, defs = {}, state = null;
-let mouse = null, stance = 0;
+let cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
 const sliders = {};
 
 const off = document.createElement('canvas');
@@ -63,31 +63,47 @@ function syncSliders() {
   }
 }
 
+const STANCE_LETTER = ['A', 'D', 'P'];
+const fieldPos = (e) => {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * grid.W, y: (e.clientY - r.top) / r.height * grid.H };
+};
+const myPlayer = (k) => state && state.players[slot * grid.teamSize + k];
+
 function setStance(s) {
-  stance = s;
-  sendJSON({ t: 'stance', s });
-  document.querySelectorAll('#stances button').forEach((b) => b.classList.toggle('on', Number(b.dataset.s) === s));
+  if (slot < 0) return;
+  sendJSON({ t: 'stance', p: selected, s });
+  if (myPlayer(selected)) myPlayer(selected).stance = s; // optimistic; the next state confirms
 }
 document.querySelectorAll('#stances button').forEach((b) => { b.onclick = () => setStance(Number(b.dataset.s)); });
-addEventListener('keydown', (e) => { if (e.key >= '1' && e.key <= '3') setStance(Number(e.key) - 1); });
-setStance(0);
-
-canvas.addEventListener('mousemove', (e) => {
-  const r = canvas.getBoundingClientRect();
-  mouse = { x: (e.clientX - r.left) / r.width * grid.W, y: (e.clientY - r.top) / r.height * grid.H };
+addEventListener('keydown', (e) => {
+  if (e.key >= '1' && e.key <= '3') setStance(Number(e.key) - 1);
+  if (e.key === 'q' || e.key === 'w' || e.key === 'e' || e.key === 'r') selected = 'qwer'.indexOf(e.key);
 });
-canvas.addEventListener('touchmove', (e) => {
-  const r = canvas.getBoundingClientRect(), t = e.touches[0];
-  mouse = { x: (t.clientX - r.left) / r.width * grid.W, y: (t.clientY - r.top) / r.height * grid.H };
-  e.preventDefault();
-}, { passive: false });
-setInterval(() => { if (mouse && slot >= 0) sendJSON({ t: 'move', x: mouse.x, y: mouse.y }); }, 33);
+
+// Drag from one of your players to give it a velocity vector (1 m of drag = 1 m/s). A click without drag stops it.
+canvas.addEventListener('pointerdown', (e) => {
+  if (slot < 0 || !state) return;
+  const c = fieldPos(e);
+  let best = -1, bd = 4; // pick radius, metres
+  for (let k = 0; k < grid.teamSize; k++) { const p = myPlayer(k), d = Math.hypot(p.x - c.x, p.y - c.y); if (d < bd) { bd = d; best = k; } }
+  if (best < 0) return;
+  selected = best; drag = { p: best }; cursor = c;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e) => { if (drag) cursor = fieldPos(e); });
+canvas.addEventListener('pointerup', (e) => {
+  if (!drag) return;
+  const c = fieldPos(e), p = myPlayer(drag.p);
+  sendJSON({ t: 'order', p: drag.p, vx: c.x - p.x, vy: c.y - p.y });
+  drag = null;
+});
 
 function updateHud() {
   document.getElementById('s0').textContent = state.score[0];
   document.getElementById('s1').textContent = state.score[1];
   const mm = Math.floor(state.remaining / 60), ss = String(Math.floor(state.remaining % 60)).padStart(2, '0');
-  const who = slot < 0 ? 'spectating' : 'you are ' + (slot ? 'red' : 'blue');
+  const who = slot < 0 ? 'spectating' : 'you are ' + (slot ? 'red' : 'blue') + ', player ' + (selected + 1) + ' selected';
   let t;
   if (state.phase === 'waiting') t = 'waiting for the second player…';
   else if (state.phase === 'countdown') t = 'kick-off in ' + Math.ceil(state.timer);
@@ -120,22 +136,36 @@ function draw() {
     ctx.fillRect(side === 0 ? goalDepth * s + 4 : cw - goalDepth * s - 12, gy + gh * s - bh, 8, bh);
   }
 
+  const arrow = (x, y, dx, dy) => { // dx, dy in metres, drawn 1:1
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dx * s, y + dy * s); ctx.stroke();
+  };
   state.players.forEach((p, i) => {
+    const team = i < grid.teamSize ? 0 : 1, mine = team === slot, k = i % grid.teamSize;
     const x = p.x * s, y = p.y * s, r = params.reach * s, a = Math.atan2(p.hy, p.hx);
-    ctx.strokeStyle = COLORS[i]; ctx.fillStyle = COLORS[i];
-    ctx.lineWidth = i === slot ? 3 : 1.5;
+    const sel = mine && k === selected;
+    ctx.strokeStyle = COLORS[team]; ctx.fillStyle = COLORS[team];
+    ctx.lineWidth = sel ? 3 : 1.5;
     ctx.setLineDash(p.stance === 1 ? [] : [6, 4]);
     ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill();
     ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 16, y + Math.sin(a) * 16);
     ctx.lineTo(x + Math.cos(a + 2.5) * 8, y + Math.sin(a + 2.5) * 8); ctx.lineTo(x + Math.cos(a - 2.5) * 8, y + Math.sin(a - 2.5) * 8); ctx.fill();
+    if (p.vx || p.vy) { ctx.lineWidth = 1.5; arrow(x, y, p.vx, p.vy); } // current velocity order
     if (p.stance === 1) { // defense wall
       const wx = x + Math.cos(a) * r, wy = y + Math.sin(a) * r, l = 1.2 * r * 1.5;
       ctx.lineWidth = 4; ctx.beginPath();
       ctx.moveTo(wx - Math.sin(a) * l, wy + Math.cos(a) * l); ctx.lineTo(wx + Math.sin(a) * l, wy - Math.cos(a) * l); ctx.stroke();
     }
     ctx.fillStyle = '#fff'; ctx.font = '12px system-ui';
-    ctx.fillText(STANCE_NAMES[p.stance] + ' · ball ' + Math.round(state.presence[i] * 100) + '%' + (p.stance === 2 ? ' · stamina ' + Math.round(p.stamina * 100) : ''), x - r, y + r + 14);
+    ctx.fillText((k + 1) + STANCE_LETTER[p.stance] + ' ' + Math.round(state.presence[i] * 100) + '%', x - 14, y - 12);
   });
+  if (drag && cursor) { // the order being dragged
+    const p = myPlayer(drag.p);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
+    arrow(p.x * s, p.y * s, cursor.x - p.x, cursor.y - p.y); ctx.setLineDash([]);
+  }
+  if (slot >= 0 && myPlayer(selected)) {
+    document.querySelectorAll('#stances button').forEach((b) => b.classList.toggle('on', Number(b.dataset.s) === myPlayer(selected).stance));
+  }
 }
 requestAnimationFrame(draw);
