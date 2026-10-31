@@ -180,7 +180,7 @@ test('additive mode: grid switches at kick-off, players still act, mass and goal
 });
 
 test('presets only name real parameters inside their ranges', () => {
-  assert.deepEqual(Object.keys(PRESETS), ['default', 'waves', 'additive', 'hybrid']);
+  assert.deepEqual(Object.keys(PRESETS), ['default', 'waves', 'additive', 'waves-kick', 'waves-well', 'waves-wall', 'waves-mass', 'hybrid']);
   for (const p of Object.values(PRESETS)) for (const [k, v] of Object.entries(p)) assert.ok(PARAMS[k] && v >= PARAMS[k].min && v <= PARAMS[k].max, k);
 });
 

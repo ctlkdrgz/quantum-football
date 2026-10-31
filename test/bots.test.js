@@ -88,12 +88,13 @@ test('turns: a scripted match with the default settings runs without trouble and
 });
 
 test('BOTS / DEMO environment parsing', () => {
-  assert.deepEqual(parseEnv({ BOTS: 'receiver,-' }), { bots: ['receiver', null], params: {} });
-  assert.deepEqual(parseEnv({ BOTS: 'lanes,shadow' }), { bots: ['lanes', 'shadow'], params: {} });
-  assert.deepEqual(parseEnv({ DEMO: '1' }), { bots: ['turns', 'turns'], params: {} });
-  assert.deepEqual(parseEnv({}), { bots: [null, null], params: {} });
+  assert.deepEqual(parseEnv({ BOTS: 'receiver,-' }), { bots: ['receiver', null], preset: 'default', params: {} });
+  assert.deepEqual(parseEnv({ BOTS: 'lanes,shadow' }), { bots: ['lanes', 'shadow'], preset: 'default', params: {} });
+  assert.deepEqual(parseEnv({ DEMO: '1' }), { bots: ['turns', 'turns'], preset: 'default', params: {} });
+  assert.deepEqual(parseEnv({}), { bots: [null, null], preset: 'default', params: {} });
   assert.deepEqual(parseEnv({ PARAMS: '{"kick":0.5}' }).params, { kick: 0.5 });
   assert.deepEqual(parseEnv({ PRESET: 'additive', PARAMS: '{"kick":1}' }).params, { additive: 1, kick: 1 });
+  assert.equal(parseEnv({ PRESET: 'waves' }).preset, 'waves'); assert.equal(parseEnv({ PRESET: 'waves', PARAMS: '{}' }).preset, 'waves+');
   assert.throws(() => parseEnv({ PRESET: 'nope' }), /unknown preset/);
   assert.throws(() => parseEnv({ BOTS: 'nope,-' }), /unknown bot nope/);
 });
@@ -111,7 +112,7 @@ test('a human plays the free team against a bot; both-bot matches take no player
   assert.equal(h.hello.slot, 1, 'the human gets the team the bot does not run');
   await until(() => h.last.phase === 'countdown'); // match starts at once: the bot team is already present
   h.ws.close(); s1.close(); s1.closeAllConnections();
-  const s2 = await start(0, { bots: ['lanes', 'shadow'], params: {} });
+  const s2 = await start(0, { bots: ['lanes', 'shadow'], preset: 'default', params: {} });
   const w = await open(s2.address().port);
   await until(() => w.hello);
   assert.equal(w.hello.slot, -1);

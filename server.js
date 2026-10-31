@@ -56,7 +56,7 @@ function start(port, opts = {}) {
 
   const send = (c, obj) => { if (!c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
   const broadcast = (obj) => clients.forEach((c) => send(c, obj));
-  const hello = (c) => send(c, { t: 'hello', slot: c.slot, defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: botNames });
+  const hello = (c) => send(c, { t: 'hello', slot: c.slot, defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: botNames, preset: opts.preset || 'custom' });
 
   const server = http.createServer((req, res) => {
     const rel = req.url.split('?')[0] === '/' ? '/index.html' : decodeURIComponent(req.url.split('?')[0]);
@@ -125,7 +125,8 @@ function parseEnv(env) {
   const bots = [list[0] || null, list[1] || null];
   bots.forEach((b) => { if (b && !STRATEGIES[b]) throw new Error('unknown bot ' + b + '; have ' + Object.keys(STRATEGIES).join(', ')); });
   if (env.PRESET && !PRESETS[env.PRESET]) throw new Error('unknown preset ' + env.PRESET + '; have ' + Object.keys(PRESETS).join(', '));
-  return { bots, params: { ...(PRESETS[env.PRESET] || {}), ...(env.PARAMS ? JSON.parse(env.PARAMS) : {}) } };
+  const preset = env.PRESET || 'default';
+  return { bots, preset: env.PARAMS ? preset + '+' : preset, params: { ...(PRESETS[env.PRESET] || {}), ...(env.PARAMS ? JSON.parse(env.PARAMS) : {}) } };
 }
 module.exports = { start, parseEnv };
 if (require.main === module) {

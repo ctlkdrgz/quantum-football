@@ -44,6 +44,11 @@ const PRESETS = {
   waves: { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.3, wallHeight: 1, wellDepth: 0.3 },
   // Default physics, but rebounds on the walls add probability instead of interfering (see the wall modes above).
   additive: { additive: 1 },
+  // Small tunings around `waves`, all about three waves across the pitch (a wavelength of a third of the width): a stronger kick, a deeper well, a higher wall, a heavier ball.
+  'waves-kick': { timeScale: 12, mass: 0.5, attenuation: 1, kick: 1, wallHeight: 1, wellDepth: 0.3 },
+  'waves-well': { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.6, wallHeight: 1, wellDepth: 0.6 },
+  'waves-wall': { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.6, wallHeight: 2, wellDepth: 0.3 },
+  'waves-mass': { timeScale: 12, mass: 0.6, attenuation: 1, kick: 0.6, wallHeight: 1, wellDepth: 0.3 },
   // An experiment from docs/VARIANTS.md (waves + additive walls + deeper well). Narrower than either parent: not recommended.
   hybrid: { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.3, wallHeight: 1, wellDepth: 1, additive: 1 },
 };

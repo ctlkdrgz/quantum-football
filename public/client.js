@@ -5,7 +5,7 @@ const msg = document.getElementById('msg');
 const COLORS = ['#4da3ff', '#ff6b5e'];
 const STANCE_NAMES = ['Attack', 'Defense', 'Pass'];
 let slot = -1, grid = { W: 100, H: 50, goalDepth: 6 }, params = {}, defs = {}, state = null;
-let bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
+let preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
 const sliders = {};
 
 const off = document.createElement('canvas');
@@ -30,7 +30,7 @@ ws.onclose = () => { msg.textContent = 'disconnected'; };
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
   if (m.t === 'hello') {
-    slot = m.slot; grid = m.grid; bots = m.bots; defs = m.defs; params = m.params;
+    slot = m.slot; grid = m.grid; bots = m.bots; preset = m.preset; defs = m.defs; params = m.params;
     off.width = grid.W; off.height = grid.H; offCtx = off.getContext('2d'); img = offCtx.createImageData(grid.W, grid.H);
     buildSliders();
     document.title = slot >= 0 ? 'Quantum Football — you are ' + (slot ? 'red' : 'blue') : 'Quantum Football — spectating';

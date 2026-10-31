@@ -20,7 +20,7 @@ Sliders on the right change the physics for both players.
 Docs: [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/ASYMMETRY.md](docs/ASYMMETRY.md) (left/right fairness: what was wrong and how it is checked), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed), [docs/PLOT-ENGINE.md](docs/PLOT-ENGINE.md) (the ball's characteristic length as a story and pacing device).
 
 ## Variants
-`PRESET=default|waves|additive|hybrid node server.js` (and `PARAMS='{...}'` for single overrides). `waves`: about 2-3 waves across the pitch. `additive`: wall rebounds add instead of
+`PRESET=default|waves|additive|waves-kick|waves-well|waves-wall|waves-mass|hybrid node server.js` (and `PARAMS='{...}'` for single overrides). `waves`: about 2-3 waves across the pitch. `additive`: wall rebounds add instead of
 interfering. Comparison, with videos' numbers and a recommendation: [docs/VARIANTS.md](docs/VARIANTS.md). Reproduce the table: `node tools/variants.js`.
 
 ## Bots

@@ -24,18 +24,35 @@ The ball still interferes with *itself* (kicks, wells and walls make fringes), o
 
 ## Measurements (bots, 6 pairings, 120 s each; options: 90 s)
 
-| | default | waves | additive | hybrid |
-|---|---|---|---|---|
-| median waves across the width | 15.7 | **2.7** | 19.7 | 2.1 |
-| ball length L (m), mean | 47 | 44 | 35 | 37 |
-| time with L in 35-65 m | 65 % | 73 % | 34 % | 44 % |
-| goals per match, both sides | 2.8 | 4.5 | 2.2 | 2.3 |
-| standing pass: ball shifted (m) | +21 | +14 | +16 | +10 |
-| attack "carry" for 10 s: ball shifted (m) | +3.6 | **-17** | +3.3 | -2.7 |
-| bot styles that score unopposed in 90 s (of 6) | **5** | 3 | 2 | 1 |
-| goals vs the fortress bot (best style) | 5 (shadow) | **0** | 6 (shadow) | 0 |
+Refreshed after auto-aim and the symmetry fix (`docs/ASYMMETRY.md`); the first version of this table (before auto-aim) is in the git history and ranked the variants differently.
 
-Bot styles: `turns receiver shadow relay plow lanes`. "Carry" = one attacker running at 6 m/s with the well on; a negative number means the ball escaped backwards.
+| | default | waves | additive |
+|---|---|---|---|
+| median waves across the width | 15.8 | **2.8** | 18.7 |
+| ball length L (m), mean | 43 | 40 | 39 |
+| time with L in 35-65 m | 64 % | 67 % | 43 % |
+| goals per match, both sides | **5.2** | 3.0 | 4.2 |
+| standing pass: ball shifted (m) | +21 | +14 | +16 |
+| attack "carry" for 10 s: ball shifted (m) | +3.6 | **-17** | +3.3 |
+| bot styles that score unopposed in 90 s (of 6) | **5** | 4 (one goal each) | 4 |
+| bot styles that beat the fortress bot | 4 | **0** | 4 |
+| goals vs the fortress, best style | 6 (receiver, shadow) | 0 | 6 (shadow) |
+
+Bot styles: `turns receiver shadow relay plow lanes`. "Carry" = one attacker running at 6 m/s with the well on; a negative number means the ball escaped backwards. `hybrid` was not rerun (it was worse than both parents before auto-aim).
+
+## Small tunings around `waves` (about three waves: a wavelength of a third of the pitch)
+
+Same pool, auto-aim on. Median waves is averaged over the six pairings, so it includes the `plow` vs `plow` pairing that stays near 1.2 in every row.
+
+| Preset | change from `waves` | median waves | goals/match | mean L (m) |
+|---|---|---|---|---|
+| `waves` | kick 0.3 | 2.8 | 2.3 | 38 |
+| `waves-kick` | kick 1 | 3.1 | **4.5** | 42 |
+| `waves-well` | kick 0.6, well 0.6 | 3.3 | 4.2 | 41 |
+| `waves-wall` | kick 0.6, wall 2 | 2.9 | 3.2 | 35 |
+| `waves-mass` | kick 0.6, mass 0.6 | 3.0 | 3.3 | 40 |
+
+All keep the 2.8-3.3 waves. A stronger kick or a deeper well buys back most of the goals the smooth regime loses; a higher wall shrinks the ball (L 35 m); a heavier ball changes little.
 
 ## What it looks like
 
@@ -47,22 +64,20 @@ Bot styles: `turns receiver shadow relay plow lanes`. "Carry" = one attacker run
 
 ## Which is more fun, and which has the better options?
 
-**To watch: `waves`.** The shapes are large, slow and attributable. A viewer can follow what a team is doing, and the ball length stays near half the pitch for 73 % of the time.
+**To watch: `waves`.** The shapes are large, slow and attributable. A viewer can follow what a team is doing, the aim lines now show where the kicks go, and L stays near half the pitch for two thirds of the match.
 
-**For options: nothing wins yet, and the numbers disagree with the looks.**
-- `default` keeps the most ways to score: 5 of 6 styles score unopposed, and passing moves the ball furthest. Its weakness is legibility.
-- `waves` is the most *watchable* but has the **narrowest set of working options**: carrying the ball fails (the weaker well loses the ball: -17 m), the fortress bot concedes nothing, and only 3 styles score unopposed. Defence beats attack, so a human who attacks has little to try, and a human who defends has one dominant answer.
-- `additive` is better for intuition (a rebound adds probability, so the wall is a tool, not a trap: shadow scores 6 against the fortress, the best of all variants) but only 2 styles score, and L drops to 35 m: the ball is squeezed against the walls more often.
-- `hybrid` (waves + additive + deeper well) was tried to get the best of both: it is **worse than either parent** (only `turns` scores, 0 against the fortress). Mixing presets is not additive; do not stack them blindly.
+**For options (after auto-aim): `default` and `additive` lead, `waves` trails.**
+- `default` has the most ways to score (5 of 6 styles unopposed, 4 beat the fortress) and the most goals. Its weakness is legibility: 16 waves look like gravel.
+- `additive` is close on options (4 and 4, shadow scores 6 against the fortress) and reads better than `default`: a rebound adds probability, so the wall becomes a tool instead of a trap. Its cost is a smaller ball (L is between 35 and 65 m only 43 % of the time: the ball piles along the walls).
+- `waves` is the most watchable and the weakest at scoring: the fortress bot still concedes nothing, carrying the ball fails, and attackers get about one goal each. The `waves-kick` and `waves-well` tunings recover most of it (4.5 and 4.2 goals per match) while keeping three waves.
 
-**Recommendation.** Make `waves` the look to aim for and fix its options, rather than adopting any preset as is:
-1. Keep time speed 12, mass 0.5, attenuation 1 (they set the 2-3 waves) and **raise the kick** (0.3 -> about 1): passing and the attack push come back without adding fringes, because the smoothing caps the wavenumber.
-2. Restore carrying with a **deeper well but wider reach**, not a deeper well alone (the hybrid shows that depth is not enough).
-3. Weaken the defence in this regime (wall 1 -> lower, or a shorter reach for defenders) so attack styles can beat the fortress.
-4. Only then try the additive walls for the goal strips: in coherent mode the goal sits where the density has a node (a wall), in additive mode it does not. That is the one place where it should clearly help, and `shadow` vs `fortress` suggests it does.
-Each step is a slider or a preset line; `node tools/variants.js <preset>` reruns the table (about a minute).
+**Recommendation.** Combine what each does best, in this order, re-measuring with `node tools/variants.js <preset>` after each step:
+1. Start from `waves-kick` (three waves, 4.5 goals/match) rather than `waves`.
+2. Try the additive walls on top of it. Last time, mixing presets by hand (`hybrid`) went badly, so judge it by the table, not by hope. The goal strips sit at the walls, which is where additive walls help most.
+3. Weaken defence in this regime (lower wall, or shorter reach for defenders) until the fortress concedes at least one style's worth of goals.
+4. Restore carrying (well + reach together; depth alone did not work).
 
 ## Caveats
 - Bots are not humans; the "options" counts are how many *scripted* styles work, a proxy for how many *human* ideas work.
-- Single runs; the pool is six pairings; the sim is deterministic but chaotic, so neighbouring settings swing goal counts by a few.
+- Single runs; the pool is six pairings (`relay` vs `shadow` is the one used for the replays); the sim is deterministic but chaotic, so neighbouring settings swing goal counts by a few.
 - Waves across the width is measured on the whole field (RMS wavenumber along x): a few fast ripples raise it. The median is the fair number; the mean is higher.
