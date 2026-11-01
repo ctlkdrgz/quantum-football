@@ -127,6 +127,16 @@ test('each team has four players, mirrored at kick-off', () => {
   for (let k = 0; k < 4; k++) assert.ok(Math.abs(m.players[k].x + m.players[k + 4].x - W) < 1e-9 && m.players[k].y === m.players[k + 4].y);
 });
 
+test('the kick-off ball is small by default and the slider resizes it before the game starts', () => {
+  const m = new Match();
+  assert.equal(m.params.packetWidth, 4);
+  const small = m.characteristicLength();
+  assert.ok(small < 20, 'default length ' + small);
+  m.setParam('packetWidth', 10); // phase 'waiting': kicked off again with the new width
+  assert.ok(m.characteristicLength() > small * 2);
+  m.setParam('packetWidth', 1); assert.equal(m.params.packetWidth, 1);
+});
+
 test('snapshot is compact and sane', () => {
   const s = playing().snapshot();
   assert.equal(s.dens.length, N);
@@ -140,7 +150,7 @@ test('characteristic length: uniform ball = pitch length, lowest mode 2/3, kick-
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) m.R[y * W + x] = Math.sin(Math.PI * (x + 1) / (W + 1)) * Math.sin(Math.PI * (y + 1) / (H + 1));
   m.normalize();
   assert.ok(Math.abs(m.characteristicLength() - 200 / 3) < 1);
-  const k = new Match(); k.kickoff(); // default packet width
+  const k = new Match(); k.setParam('packetWidth', 14); k.kickoff();
   assert.ok(Math.abs(k.characteristicLength() - W / 2) < 3, 'kick-off length ' + k.characteristicLength());
   k.R.fill(0); k.I.fill(0); assert.equal(k.characteristicLength(), 0);
   assert.equal(new Match().snapshot().length > 0, true);
@@ -246,7 +256,7 @@ test('aims: pass targets lead a running ally; allies within 2 m are skipped; wit
 
 test('Pass splits the caught wave between the allies; Dribble and Defense behave as described', () => {
   const sides = (ally2) => {
-    const m = playing(); park(m); m.setParam('attenuation', 0); m.setParam('wellDepth', 0.3);
+    const m = playing(); m.setParam('packetWidth', 14); m.kickoff(); park(m); m.setParam('attenuation', 0); m.setParam('wellDepth', 0.3);
     place(m, 0, 45, 25); place(m, 1, 75, 8); place(m, 2, ally2 ? 75 : 45, ally2 ? 42 : 25); place(m, 3, 45, 25); // allies within 2 m of the passer are not receivers
     m.setStance(0, PASS); run(m, 2.5); m.setStance(0, DRIBBLE); run(m, 1.5);
     const D = m.density(); let up = 0, down = 0;
@@ -279,7 +289,7 @@ test('Defense catches over a wide area: its well is wider and farther ahead than
 
 test('aim: kicks follow the aim, not the heading: a shot facing up still sends the ball toward the goal', () => {
   const shift = (autoAim) => {
-    const m = playing(); park(m); m.setParam('autoAim', autoAim); m.setParam('attenuation', 0);
+    const m = playing(); m.setParam('packetWidth', 14); m.kickoff(); park(m); m.setParam('autoAim', autoAim); m.setParam('attenuation', 0);
     place(m, 0, 40, 25, { hx: 0, hy: -1 }); m.setStance(0, SHOT);
     run(m, 0.8); m.setStance(0, DRIBBLE); run(m, 3);
     let cx = 0, cy = 0; const D = m.density(); for (let i = 0; i < N; i++) { cx += ((i % W) + 0.5) * D[i]; cy += (Math.floor(i / W) + 0.5) * D[i]; }

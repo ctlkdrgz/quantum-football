@@ -29,7 +29,7 @@ const PARAMS = {
   timeScale:   { min: 0.5,  max: 12,   def: 5,    step: 0.1,  label: 'Wave time speed' },
   mass:        { min: 0.5,  max: 4,    def: 0.7,  step: 0.05, label: 'Ball weight (mass)' },
   attenuation: { min: 0,    max: 1,    def: 0.05, step: 0.01, label: 'Attenuation (smoothing)' },
-  packetWidth: { min: 2,    max: 20,   def: 14,   step: 0.5,  label: 'Kick-off packet width (m)' },
+  packetWidth: { min: 1,    max: 20,   def: 4,    step: 0.5,  label: 'Ball size at kick-off: packet width (m)' },
   goalHeight:  { min: 6,    max: 40,   def: 20,   step: 1,    label: 'Goal height (m)' },
   threshold:   { min: 0.05, max: 0.9,  def: 0.1,  step: 0.01, label: 'Goal threshold (probability)' },
   matchSeconds:{ min: 30,   max: 600,  def: 180,  step: 10,   label: 'Match duration (s)' },
@@ -88,6 +88,7 @@ class Match {
     if (!d || typeof v !== 'number' || !Number.isFinite(v)) return false;
     this.params[k] = k === 'additive' || k === 'autoAim' ? Math.round(clamp(v, 0, 1)) : clamp(v, d.min, d.max);
     if (k === 'matchSeconds' && this.phase !== 'playing') this.remaining = this.params.matchSeconds;
+    if (k === 'packetWidth' && (this.phase === 'waiting' || this.phase === 'countdown')) this.kickoff(); // the ball on the spot follows the slider
     return true;
   }
 
