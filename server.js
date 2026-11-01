@@ -1,6 +1,6 @@
 'use strict';
 // Quantum Football server: static files + a tiny dependency-free WebSocket endpoint (/ws).
-// One match only. The first two connections are players 0 and 1; later ones are spectators.
+// One match only. The first connection is the admin, the second is "human", the others spectate. Only those two can take a team (when one is set to human).
 const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -51,19 +51,21 @@ function start(port, opts = {}) {
   // Who controls each team: a strategy name, or null for a human. Default: the 'random' script on both.
   const control = (opts.bots || ['random', 'random']).slice(0, 2);
   for (const [k, val] of Object.entries(opts.params || {})) match.setParam(k, val);
+  match.paused = opts.paused !== false; // starts paused: the admin presses play
   match.kickoff(); // some parameters (packet width, wall mode) take effect at kick-off
   const clients = new Set(); // { sock, slot }, in connection order; the first one is the admin
 
   const send = (c, obj) => { if (!c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
   const broadcast = (obj) => clients.forEach((c) => send(c, obj));
   const admin = () => clients.values().next().value;
-  const hello = (c) => send(c, { t: 'hello', slot: c.slot, admin: c === admin(), strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: control, preset: opts.preset || 'custom' });
-  // Teams controlled by a human go to the earliest connections; everyone else spectates. Clients whose slot changed get a new hello.
+  const role = (c) => { const i = [...clients].indexOf(c); return i === 0 ? 'admin' : i === 1 ? 'human' : 'spectator'; };
+  const hello = (c) => send(c, { t: 'hello', slot: c.slot, admin: c === admin(), role: role(c), paused: match.paused, strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: control, preset: opts.preset || 'custom' });
+  // Teams controlled by a human go to the first two connections (admin, then "human"); everyone else spectates. Clients whose slot changed get a new hello.
   const assign = () => {
     const free = [0, 1].filter((t) => !control[t]);
     const before = new Map([...clients].map((c) => [c, c.slot]));
     let i = 0;
-    for (const c of clients) c.slot = i < free.length ? free[i++] : -1;
+    [...clients].forEach((c, n) => { c.slot = n < 2 && i < free.length ? free[i++] : -1; });
     for (let t = 0; t < 2; t++) match.setPresent(t, !control[t] ? [...clients].some((c) => c.slot === t) : true);
     for (const c of clients) if (c.slot !== before.get(c) || !before.has(c)) hello(c);
   };
@@ -74,7 +76,7 @@ function start(port, opts = {}) {
     if (!file.startsWith(PUBLIC + path.sep)) { res.writeHead(403).end(); return; }
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404).end('not found'); return; }
-      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' }).end(data);
+      res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }).end(data);
     });
   });
 
@@ -100,14 +102,15 @@ function start(port, opts = {}) {
         broadcast({ t: 'control', bots: control });
         return;
       }
+      if (m.t === 'pause' && c === admin()) { match.paused = !!m.on; broadcast({ t: 'paused', paused: match.paused }); return; }
+      if (m.t === 'param' && role(c) !== 'spectator' && match.setParam(m.k, m.v)) { broadcast({ t: 'params', params: match.params }); return; } // the admin and the human change the physics, even when no team is theirs
       if (c.slot < 0) return; // spectators only watch
       const mine = Number.isInteger(m.p) && m.p >= 0 && m.p < TEAM_SIZE ? c.slot * TEAM_SIZE + m.p : -1; // you only command your own four
       if (m.t === 'order' && mine >= 0) match.setOrder(mine, m.vx, m.vy);
       else if (m.t === 'move' && mine >= 0) match.moveTo(mine, m.x, m.y, !!m.queue);
       else if (m.t === 'stance' && mine >= 0) match.setStance(mine, m.s);
-      else if (m.t === 'param' && match.setParam(m.k, m.v)) broadcast({ t: 'params', params: match.params });
     }));
-    const drop = () => { if (clients.delete(c)) { assign(); if (admin()) hello(admin()); } }; // the next in line inherits the team, or the admin role
+    const drop = () => { if (clients.delete(c)) { assign(); [...clients].slice(0, 2).forEach((x) => hello(x)); } }; // the next in line inherits the team or the role
     sock.on('close', drop);
     sock.on('error', drop);
   });
@@ -115,8 +118,8 @@ function start(port, opts = {}) {
   let last = Date.now();
   const timer = setInterval(() => {
     const now = Date.now();
-    if (control[0] || control[1]) bots.drive(match, control);
-    match.step(Math.min(0.1, (now - last) / 1000));
+    if ((control[0] || control[1]) && !match.paused) bots.drive(match, control);
+    match.step(Math.min(0.1, (now - last) / 1000)); // a no-op while paused
     last = now;
     if (!clients.size) return;
     const s = match.snapshot();
@@ -130,6 +133,7 @@ function start(port, opts = {}) {
 
 // BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks the starting strategies: random turns receiver fortress shadow lanes relay plow (default random,random).
 // The first browser to connect is the admin and can change who controls each team from the band at the top of the page.
+// The match starts paused; the admin starts it with the play button. Opening or refreshing the page loads everything afresh (no caching).
 // DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.
 // PRESET=default|waves|additive|waves-kick|waves-well|waves-wall|waves-mass|hybrid starts from a named parameter set (docs/VARIANTS.md).
 // PARAMS='{"kick":0.5,"additive":1}' overrides slider defaults at start (JSON).

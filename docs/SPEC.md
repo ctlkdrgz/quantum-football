@@ -37,7 +37,7 @@ The equations and numerics behind this are in [PHYSICS.md](PHYSICS.md).
 ## Characteristic length of the ball
 `L = 1 / sum(rho_x^2)` (metres): the participation length of the ball's density summed over the pitch height, along the 100 m axis. A uniform ball gives 100 m,
 the lowest standing mode 66.7 m, a Gaussian packet of density std s gives 3.54 s, a ball squeezed into a goal a few metres. Shown in the HUD (`ball length`).
-The defaults are tuned so that **L is about half the pitch (50 m)**: the kick-off packet (width 14) has L = 49.6 m, and over bot matches L averages about 46 m
+The defaults are tuned so that **L is about half the pitch (50 m)**: a kick-off packet of width 14 (no longer the default, which is 4) has L = 49.6 m, and over bot matches L averages about 46 m
 (35-65 m for 65 % of the time, goals about 5 per 3-minute match, measured with `tune` runs of 6 bot pairings; noisy). Left alone, the ball "breathes" between 50 and 80 m.
 What it takes to keep L near 50 m while the ball is still playable: the players' reach (8 m) must be a fair fraction of L, kicks must be strong (2), wells shallow (0.5, deep wells
 squeeze L down), and the mass light (0.7, heavier balls spread more slowly and let wells win). See `docs/PLOT-ENGINE.md` for what L can do for the game.

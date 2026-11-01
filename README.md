@@ -9,13 +9,13 @@ A prototype.
 node server.js            # http://localhost:8080  (PORT=1234 to change)
 node --test 'test/*.test.js'
 ```
-Open the page in two browsers: the first two connections play (blue/red), the next ones spectate.
+Open the page in several browsers: the first connection is the **admin**, the second is the **human**, the others spectate. The match starts **paused**; the admin presses Play. Teams set to `human` go to the admin, then the human. Static files are served with `no-store`, so a browser refresh reloads the whole app.
 
 ## Play
 You command four players. Drag from one of your players and drop: it runs there at full speed and stops (thin dotted line = its path). **Shift**-drop adds the destination after the current path; a click stops it. Keys **1** Defense (wide catch, kicks straight ahead),
 **2** Pass (catches just ahead, medium kick split among the allies, the more advanced the likelier), **3** Shot (catches just ahead, hard kick at the opposing goal),
 **4** Dribble (catches just ahead and keeps the ball there) set the selected player's stance; **Q/W/E/R** select players 1-4.
-Sliders on the right change the physics for both players.
+Sliders on the right change the physics live (admin and human only); the ball size slider ("packet width", default 4 m) resizes the ball before kick-off.
 
 Docs: [docs/PHYSICS.md](docs/PHYSICS.md) (the physics: equation, discretisation, player forces, goals; kept in sync with `sim.js`), [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/ASYMMETRY.md](docs/ASYMMETRY.md) (left/right fairness: what was wrong and how it is checked), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed), [docs/PLOT-ENGINE.md](docs/PLOT-ENGINE.md) (the ball's characteristic length as a story and pacing device).
 

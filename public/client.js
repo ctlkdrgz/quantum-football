@@ -5,7 +5,7 @@ const msg = document.getElementById('msg');
 const COLORS = ['#4da3ff', '#ff6b5e'];
 const STANCE_NAMES = ['Defense', 'Pass', 'Shot', 'Dribble'];
 let slot = -1, grid = { W: 100, H: 50, goalDepth: 6 }, params = {}, defs = {}, state = null;
-let admin = false, strategies = [], preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while a move is being dragged
+let role = 'spectator', paused = true, admin = false, strategies = [], preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while a move is being dragged
 const sliders = {};
 
 const off = document.createElement('canvas');
@@ -30,15 +30,25 @@ ws.onclose = () => { msg.textContent = 'disconnected'; };
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
   if (m.t === 'hello') {
-    slot = m.slot; admin = m.admin; strategies = m.strategies; grid = m.grid; bots = m.bots; preset = m.preset; defs = m.defs; params = m.params;
+    slot = m.slot; admin = m.admin; role = m.role; paused = m.paused; strategies = m.strategies; grid = m.grid; bots = m.bots; preset = m.preset; defs = m.defs; params = m.params;
     off.width = grid.W; off.height = grid.H; offCtx = off.getContext('2d'); img = offCtx.createImageData(grid.W, grid.H);
     buildSliders();
-    document.title = slot >= 0 ? 'Quantum Football — you are ' + (slot ? 'red' : 'blue') : 'Quantum Football — spectating';
+    document.title = 'Quantum Football — ' + role + (slot >= 0 ? ', ' + (slot ? 'red' : 'blue') : '');
     buildBand();
-  } else if (m.t === 'control') { bots = m.bots; buildBand(); }
+    buildPause();
+  } else if (m.t === 'paused') { paused = m.paused; buildPause(); }
+  else if (m.t === 'control') { bots = m.bots; buildBand(); }
   else if (m.t === 'params') { params = m.params; syncSliders(); }
-  else if (m.t === 'state') { state = m; state.bytes = Uint8Array.from(atob(m.dens), (c) => c.charCodeAt(0)); updateHud(); }
+  else if (m.t === 'state') { state = m; if (m.paused !== paused) { paused = m.paused; buildPause(); } state.bytes = Uint8Array.from(atob(m.dens), (c) => c.charCodeAt(0)); updateHud(); }
 };
+
+// Play/pause: the admin's button; everybody else sees the state.
+function buildPause() {
+  const b = document.getElementById('pause');
+  b.hidden = !admin;
+  b.textContent = paused ? '▶ Play' : '⏸ Pause';
+  b.onclick = () => sendJSON({ t: 'pause', on: !paused });
+}
 
 // Top band: the admin (first client to connect) picks who controls each team; the others see it read-only.
 function buildBand() {
@@ -74,7 +84,7 @@ function buildSliders() {
     label.append(d.label, val);
     const input = document.createElement('input');
     input.type = 'range'; input.min = d.min; input.max = d.max; input.step = d.step; input.value = params[k];
-    input.disabled = slot < 0;
+    input.disabled = role === 'spectator'; // the admin and the human change the physics, even when no team is theirs
     input.oninput = () => { val.textContent = input.value; sendJSON({ t: 'param', k, v: Number(input.value) }); };
     label.append(input);
     box.append(label);
@@ -135,13 +145,14 @@ function updateHud() {
   document.getElementById('s0').textContent = state.score[0];
   document.getElementById('s1').textContent = state.score[1];
   const mm = Math.floor(state.remaining / 60), ss = String(Math.floor(state.remaining % 60)).padStart(2, '0');
-  const who = slot < 0 ? 'spectating' : 'you are ' + (slot ? 'red' : 'blue') + ', player ' + (selected + 1) + ' selected';
+  const who = role + (slot < 0 ? '' : ', ' + (slot ? 'red' : 'blue') + ', player ' + (selected + 1) + ' selected');
   let t;
   if (state.phase === 'waiting') t = 'waiting for the second player…';
   else if (state.phase === 'countdown') t = 'kick-off in ' + Math.ceil(state.timer);
   else if (state.phase === 'goal') t = (state.lastScorer ? 'RED' : 'BLUE') + ' scores!';
   else if (state.phase === 'over') t = 'full time — ' + (state.score[0] === state.score[1] ? 'draw' : state.score[0] > state.score[1] ? 'blue wins' : 'red wins');
   else t = mm + ':' + ss;
+  if (paused) t = 'PAUSED · ' + t;
   const names = bots[0] || bots[1] ? ' · blue: ' + (bots[0] || 'human') + ' / red: ' + (bots[1] || 'human') : '';
   msg.textContent = t + ' · ' + who + names + ' · ball length ' + Math.round(state.length) + ' m · ' + state.waves.toFixed(1) + ' waves';
 }
