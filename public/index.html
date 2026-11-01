@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quantum Football</title>
 <style>
+  #legend { display:block; margin-top:6px; }
   :root { --bg:#0b0e14; --panel:#151a24; --fg:#dde3ee; --dim:#8893a6; --p0:#4da3ff; --p1:#ff6b5e; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; }
@@ -44,6 +45,11 @@
     <small>You command four players. Drag from one of your players and drop: it runs there at full speed and stops. Shift-drop adds the destination after its current path; with shift the drag can start anywhere (away from your players it moves the selected one, and a shift-click queues the clicked spot). A plain click on a player stops it.
       The selected player's stance is set with keys 1/2/3/4 or the buttons; Q/W/E/R select players 1–4. Labels show number, stance (D/P/S/B) and how much of the ball is near that player.
       Bright = where the ball is likely to be. Bars at the goals show the probability of the ball being inside.</small>
+    <small id="legend"><b>On the pitch.</b> Dot + arrowhead: a player and the way it faces.
+      Shaded disc and circle ahead of a player: its <i>catch zone</i>, where its well pulls the ball and its kicks act (the circle is the well's width, 1 sigma; its size and distance grow with the reach slider).
+      Solid circle: Defense stance (wide zone, farther ahead). Dashed circle: Pass, Shot or Dribble. Thick circle: your selected player.
+      Thin dotted lines in team colour ending in a small ring: where the player's kick goes (Pass: one line per ally, fainter = less of the ball sent there; Shot: the goal; Defense: straight ahead).
+      White dotted line with dots: the path you gave one of your players and its waypoints.</small>
   </section>
   <aside><h2>Parameters (admin and human; shared)</h2><div id="sliders"></div></aside>
 </main>
