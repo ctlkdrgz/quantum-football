@@ -19,7 +19,7 @@ Companion docs: mechanics and controls in [SPEC.md](SPEC.md), the "ball length" 
 
 1.3 **Units.** hbar = 1, lengths in metres, "game time" in game-seconds. Real time reaches the wave through `gdt = dt * timeScale` (default 5, range 0.5 to 12). The players' motion and the countdowns run on real time; only psi runs on game time. So `timeScale` is the ratio of ball speed to player speed.
 
-1.4 **Initial condition (`kickoff`).** A real Gaussian packet centred on the pitch, psi proportional to `exp(-r^2 / (4 s^2))` with `s = packetWidth` (default 14), so the density |psi|^2 is proportional to `exp(-r^2 / (2 s^2))`: standard deviation `s` in each axis. Phases are all zero, so the mean momentum is zero: the ball starts "still" and spreads. Then normalised.
+1.4 **Initial condition (`kickoff`).** A real Gaussian packet centred on the pitch, psi proportional to `exp(-r^2 / (4 s^2))` with `s = packetWidth` (default 4, slider 1-20; changing it while the game is waiting or counting down re-does the kick-off), so the density |psi|^2 is proportional to `exp(-r^2 / (2 s^2))`: standard deviation `s` in each axis. Phases are all zero, so the mean momentum is zero: the ball starts "still" and spreads. Then normalised.
 
 ## 2. The free dynamics
 
@@ -29,7 +29,7 @@ Companion docs: mechanics and controls in [SPEC.md](SPEC.md), the "ball length" 
 
 2.3 **Group velocity.** A packet with wavenumber `k` (rad/m) moves at `k/m` m per game-second, i.e. `k * timeScale / m` m per real second. This is the formula `aim()` uses to predict pass travel time (with `k = 0.7 * kick`, clamped to 2 to 30 m/s).
 
-2.4 **Spreading.** A free packet of initial width `s` widens as `sqrt(s^2 + (t/(2 m s))^2)` in game time. With the defaults (s = 14, m = 0.7) the ball is far wider than a player's reach within a few real seconds, which is why the kick-off packet width and `L` (PLOT-ENGINE) are tuned together.
+2.4 **Spreading.** A free packet of initial width `s` widens as `sqrt(s^2 + (t/(2 m s))^2)` in game time. With the defaults (s = 4, m = 0.7) the ball is far wider than a player's reach within a few real seconds, which is why the kick-off packet width and `L` (PLOT-ENGINE) are tuned together.
 
 2.5 **Walls, coherent mode (`additive = 0`).** Out-of-range neighbours are 0 (`neighbours()`), i.e. psi = 0 one cell beyond each edge: Dirichlet, hard reflecting walls. The incident and reflected waves interfere in the amplitude: standing-wave nodes, and the lowest pitch mode has half a wave across the length (`wavesAcrossWidth() = 0.5`). Eigenmodes are `sin(n pi x / W) sin(m pi y / H)` (up to the half-cell offset).
 
@@ -106,7 +106,7 @@ Wall caveat: the smoothing treats out-of-range neighbours the same as the Hamilt
 | `timeScale` | 5 | `gdt = dt * timeScale` | wave clock vs. player clock; ball speed in m/s real = `k * timeScale / m` |
 | `mass` | 0.7 | kinetic coefficient `1/(2m)` | inertia: heavier = slower spreading, slower after a kick |
 | `attenuation` | 0.05 | `smooth` | diffusion coefficient `attenuation / 2` per game-s; kills short waves |
-| `packetWidth` | 14 | `kickoff` | initial std of the density (m) |
+| `packetWidth` | 4 | `kickoff` | initial std of the density (m) |
 | `goalHeight`, `threshold` | 20, 0.1 | `goalProbabilities`, `checkGoals` | size of the goal window; probability needed to score |
 | `runSpeed` | 12 | `setOrder`, `movePlayers` | player speed (m/s, real time) |
 | `reach` | 8 | well offset and size | spatial scale of every player effect |
