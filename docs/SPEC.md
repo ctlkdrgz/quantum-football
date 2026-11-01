@@ -48,7 +48,7 @@ displayed density is the sum over the four mirror images: rebounds add probabili
 Presets (`PRESETS` in `sim.js`): `default`, `waves`, `additive`, `waves-kick`, `waves-well`, `waves-wall`, `waves-mass`, `hybrid`; compared in `docs/VARIANTS.md`.
 
 ## Parameters (sliders, shared by both players, clamped on the server)
-Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal height, goal threshold, match duration,
+Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal width, goal threshold, match duration,
 player max speed, player reach, catch well depth (Pass/Shot/Dribble), Defense well depth, kick strength. Ranges and defaults: `PARAMS` in `sim.js`.
 
 ## Architecture
