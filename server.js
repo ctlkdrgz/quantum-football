@@ -6,7 +6,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { Match, PARAMS, PRESETS, W, H, GOAL_DEPTH, TEAM_SIZE } = require('./sim');
+const { Match, PARAMS, PRESETS, W, H, GOAL_DEPTH, TEAM_SIZE, CATCH } = require('./sim');
 const bots = require('./bots');
 const { STRATEGIES } = bots;
 
@@ -65,7 +65,7 @@ function start(port, opts = {}) {
   const broadcast = (obj) => members.forEach((c) => send(c, obj));
   const admin = () => members.values().next().value;
   const role = (c) => { const i = [...members.values()].indexOf(c); return i === 0 ? 'admin' : i === 1 ? 'human' : 'spectator'; };
-  const hello = (c) => send(c, { t: 'hello', id: c.id, name: c.name, slot: c.slot, admin: c === admin(), role: role(c), paused: match.paused, strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: control, preset: opts.preset || 'custom' });
+  const hello = (c) => send(c, { t: 'hello', id: c.id, name: c.name, slot: c.slot, admin: c === admin(), role: role(c), paused: match.paused, strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE, catch: CATCH }, bots: control, preset: opts.preset || 'custom' });
   // Stable roles: a member keeps its team while that team is still a human one; vacant human teams go to the earliest members without one.
   // Members whose slot changed get a new hello (except skip, who is about to get one).
   const assign = (skip, roles = new Map()) => { // roles: each member's role before a departure, so those whose role changed hear about it too
@@ -164,7 +164,7 @@ function start(port, opts = {}) {
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, opts.host, () => { server.off('error', reject); resolve(server); }); });
 }
 
-// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks the starting strategies: random turns receiver fortress shadow lanes relay plow (default random,random).
+// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks the starting strategies: random turns receiver fortress shadow lanes relay plow chase idle (default random,random).
 // The first browser to connect is the admin and can change who controls each team from the band at the top of the page.
 // The match starts paused; the admin starts it with the play button. Opening or refreshing the page loads everything afresh (no caching).
 // DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.

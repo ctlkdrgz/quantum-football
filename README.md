@@ -15,6 +15,7 @@ Open the page in several browsers: the first connection is the **admin**, the se
 You command four players. Drag from one of your players and drop: it runs there at full speed and stops (thin dotted line = its path). **Shift**-drop adds the destination after the current path; a click stops it. Keys **1** Defense (wide catch, kicks straight ahead),
 **2** Pass (catches just ahead, medium kick split among the allies, the more advanced the likelier), **3** Shot (catches just ahead, hard kick at the opposing goal),
 **4** Dribble (catches just ahead and keeps the ball there) set the selected player's stance; **Q/W/E/R** select players 1-4.
+The shaded disc ahead of each player is its catch zone, where the catch well pulls the ball: the circle is the well's width (1 sigma) around its centre, solid for Defense (wide, farther ahead), dashed for the other stances.
 Sliders on the right change the physics live (admin and human only); the ball size slider ("packet width", default 4 m) resizes the ball before kick-off.
 
 Docs: [docs/PHYSICS.md](docs/PHYSICS.md) (the physics: equation, discretisation, player forces, goals; kept in sync with `sim.js`), [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/ASYMMETRY.md](docs/ASYMMETRY.md) (left/right fairness: what was wrong and how it is checked), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed), [docs/PLOT-ENGINE.md](docs/PLOT-ENGINE.md) (the ball's characteristic length as a story and pacing device).
@@ -42,5 +43,7 @@ Tests (`test/*.test.js`) start their own servers on a random loopback port, so t
 | `lanes` | All four run sideways, each in its own quarter of the pitch length; the two nearest our goal defend, the other two attack |
 | `relay` | A bucket brigade: player 1 passes from behind the ball; players 2-4 stand as dribble-stance stepping stones every 12 m toward the goal |
 | `plow` | All four form a line of defenders across the pitch and advance abreast, 12 m behind the ball, clearing the wave toward the goal |
+| `chase` | Each player runs to one of the hot spots of the wave (at least half as hot as the hottest, none inside the opposing goal) in Shot stance, then dribbles it toward the opposing goal at 3 m/s |
+| `idle` | No action: all four stand still where they are, keeping their stance (a target for testing, or a team left alone) |
 
 Example: `BOTS=shadow,- node server.js` and play red against the shadow bot.

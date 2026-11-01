@@ -23,6 +23,8 @@ const STANCE = { DEFENSE: 0, PASS: 1, SHOT: 2, DRIBBLE: 3 };
 const KICK_WIDTH = 2;
 const PULSE_S = 0.4; // seconds between the splits of a Pass to several allies
 const KICK_GAIN = [0.7, 0.5, 1.0, 0]; // by stance: Defense clears straight (fairly hard), Pass medium, Shot high, Dribble none
+// Catch well geometry by stance, in units of the reach: Gaussian width sig and offset of its centre ahead of the player (Defense wide and a bit farther).
+const CATCH = [{ sig: 1.5, off: 1.2 }, { sig: 0.8, off: 0.8 }, { sig: 0.8, off: 0.8 }, { sig: 0.8, off: 0.8 }];
 
 // Every slider. Units: lengths in metres, "game time" = real time x timeScale.
 const PARAMS = {
@@ -391,8 +393,8 @@ class Match {
       const aims = this.aims(i);
       p.aim = aims.length ? aims.map((t) => ({ tx: t.tx, ty: t.ty, w: t.w })) : null;
       // Catch well just ahead of the player (wide and a bit farther for Defense), carried along as the player moves; then the kick of the caught wave.
-      const def = p.stance === STANCE.DEFENSE;
-      const sig = (def ? 1.5 : 0.8) * P.reach, off = (def ? 1.2 : 0.8) * P.reach, depth = def ? P.wallHeight : P.wellDepth;
+      const def = p.stance === STANCE.DEFENSE, g = CATCH[p.stance];
+      const sig = g.sig * P.reach, off = g.off * P.reach, depth = def ? P.wallHeight : P.wellDepth;
       let kappa = KICK_GAIN[p.stance] * P.kick * dtReal, fire = true;
       if (aims.length > 1) { // a Pass to several allies is a split, fired in pulses of the impulse of PULSE_S seconds
         p.pulse = (p.pulse === undefined ? PULSE_S : p.pulse) + dtReal;
@@ -473,4 +475,4 @@ class Match {
   }
 }
 
-module.exports = { Match, PARAMS, PRESETS, STANCE, W, H, N, GOAL_DEPTH, TEAM_SIZE, NP };
+module.exports = { Match, PARAMS, PRESETS, STANCE, CATCH, W, H, N, GOAL_DEPTH, TEAM_SIZE, NP };
