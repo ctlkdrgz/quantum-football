@@ -85,6 +85,7 @@ function buildSliders() {
     const label = document.createElement('label');
     const val = document.createElement('span');
     label.append(d.label, val);
+    if (d.tip) { label.title = d.tip; label.style.cursor = 'help'; }
     const input = document.createElement('input');
     input.type = 'range'; input.min = d.min; input.max = d.max; input.step = d.step; input.value = params[k];
     input.disabled = role === 'spectator'; // the admin and the human change the physics, even when no team is theirs

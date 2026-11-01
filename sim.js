@@ -28,20 +28,20 @@ const CATCH = [{ sig: 1.5, off: 1.2 }, { sig: 0.8, off: 0.8 }, { sig: 0.8, off: 
 
 // Every slider. Units: lengths in metres, "game time" = real time x timeScale.
 const PARAMS = {
-  timeScale:   { min: 0.5,  max: 12,   def: 5,    step: 0.1,  label: 'Wave time speed' },
-  mass:        { min: 0.5,  max: 4,    def: 0.7,  step: 0.05, label: 'Ball weight (mass)' },
-  attenuation: { min: 0,    max: 1,    def: 0.05, step: 0.01, label: 'Attenuation (smoothing)' },
-  packetWidth: { min: 1,    max: 20,   def: 4,    step: 0.5,  label: 'Ball size at kick-off: packet width (m)' },
-  goalHeight:  { min: 6,    max: 40,   def: 20,   step: 1,    label: 'Goal height (m)' },
-  threshold:   { min: 0.05, max: 0.9,  def: 0.1,  step: 0.01, label: 'Goal threshold (probability)' },
-  matchSeconds:{ min: 30,   max: 600,  def: 180,  step: 10,   label: 'Match duration (s)' },
-  runSpeed:    { min: 2,    max: 30,   def: 12,   step: 0.5,  label: 'Player max speed (m/s)' },
-  reach:       { min: 1.5,  max: 12,   def: 8,    step: 0.1,  label: 'Player reach (m)' },
-  wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Pass/Shot/Dribble: catch well depth' },
-  wallHeight:  { min: 0,    max: 4,    def: 1,    step: 0.05, label: 'Defense: wide catch well depth' },
-  autoAim:     { min: 0,    max: 1,    def: 1,    step: 1,    label: 'Auto-aim pass/shot at allies/goal (0 = along heading)' },
-  additive:    { min: 0,    max: 1,    def: 0,    step: 1,    label: 'Walls: coherent (0) / additive (1), next kick-off' },
-  kick:        { min: 0,    max: 3,    def: 2,    step: 0.05, label: 'Kick strength (momentum/s)' },
+  timeScale:   { min: 0.5,  max: 12,   def: 5,    step: 0.1,  label: 'Wave time speed', tip: "How fast the wave clock runs against the players' clock. Higher: the ball moves, spreads and reacts to kicks faster (its speed is momentum x timeScale / mass). Players are not affected." },
+  mass:        { min: 0.5,  max: 4,    def: 0.7,  step: 0.05, label: 'Ball weight (mass)', tip: 'Inertia of the ball. Heavier: it spreads more slowly and travels more slowly after the same kick. Lighter: livelier, but it disperses quickly.' },
+  attenuation: { min: 0,    max: 1,    def: 0.05, step: 0.01, label: 'Attenuation (smoothing)', tip: "Smoothing applied every tick: damps the short ripples of the wave. High values keep only a few long waves on the pitch (the 'waves' presets use 1). The total probability is kept at 1 anyway." },
+  packetWidth: { min: 1,    max: 20,   def: 4,    step: 0.5,  label: 'Ball size at kick-off: packet width (m)', tip: 'Width (standard deviation, metres) of the ball placed at the centre at each kick-off. Changes take effect at the next kick-off (at once while waiting or counting down).' },
+  goalHeight:  { min: 6,    max: 40,   def: 20,   step: 1,    label: 'Goal height (m)', tip: 'Width of the goal mouth along the end wall (metres). The goal zone is that width times 6 m deep.' },
+  threshold:   { min: 0.05, max: 0.9,  def: 0.1,  step: 0.01, label: 'Goal threshold (probability)', tip: 'A goal is scored when the probability inside a goal zone reaches this value (shown by the bar next to each goal).' },
+  matchSeconds:{ min: 30,   max: 600,  def: 180,  step: 10,   label: 'Match duration (s)', tip: 'Length of a match, in real seconds.' },
+  runSpeed:    { min: 2,    max: 30,   def: 12,   step: 0.5,  label: 'Player max speed (m/s)', tip: 'Top speed of every player (metres per real second). Does not touch the ball physics.' },
+  reach:       { min: 1.5,  max: 12,   def: 8,    step: 0.1,  label: 'Player reach (m)', tip: "SIZE and DISTANCE of every player's effect on the ball, in metres (the scale of the shaded catch zone). The catch well sits 0.8 x reach ahead of the player with width 0.8 x reach (Defense: 1.2 x reach ahead, width 1.5 x reach); kicks act over that zone too. Bigger reach = catches from farther, over a wider area. It says WHERE a player acts, not HOW STRONGLY: that is the well depth." },
+  wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Pass/Shot/Dribble: catch well depth', tip: 'STRENGTH of the catch well for Pass, Shot and Dribble: how deep the attractive dip ahead of the player is. Deeper = holds the ball tighter, drags it along better and compresses it; 0 = no catching at all (kicks still act). It says HOW STRONGLY a player holds, not WHERE: that is the reach.' },
+  wallHeight:  { min: 0,    max: 4,    def: 1,    step: 0.05, label: 'Defense: wide catch well depth', tip: 'Same as the well depth, but for the Defense stance only: strength of its wider, farther catch well (the name dates from when Defense was a repulsive wall).' },
+  autoAim:     { min: 0,    max: 1,    def: 1,    step: 1,    label: 'Auto-aim pass/shot at allies/goal (0 = along heading)', tip: "1: Pass kicks toward the allies (more toward the more advanced ones) and Shot toward the opposing goal. 0: both kick straight along the player's heading." },
+  additive:    { min: 0,    max: 1,    def: 0,    step: 1,    label: 'Walls: coherent (0) / additive (1), next kick-off', tip: 'Wall behaviour, from the next kick-off. 0 (coherent): the wave reflects off the walls and interferes with itself. 1 (additive): rebounds add probability instead of interfering.' },
+  kick:        { min: 0,    max: 3,    def: 2,    step: 0.05, label: 'Kick strength (momentum/s)', tip: "Strength of every kick (momentum given per second while the ball is in the zone), times the stance's gain: Shot 1, Defense 0.7, Pass 0.5, Dribble 0. Beyond a point a harder kick no longer makes the ball faster." },
 };
 
 // Named parameter sets (overrides of the defaults), see docs/VARIANTS.md.
