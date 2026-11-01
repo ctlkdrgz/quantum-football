@@ -9,6 +9,7 @@ const path = require('path');
 const { Match, PARAMS, PRESETS, W, H, GOAL_DEPTH, TEAM_SIZE, CATCH } = require('./sim');
 const bots = require('./bots');
 const { STRATEGIES } = bots;
+const { GameLog } = require('./gamelog');
 
 const PUBLIC = path.join(__dirname, 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -66,6 +67,9 @@ function start(port, opts = {}) {
   for (const [k, val] of Object.entries(opts.params || {})) match.setParam(k, val);
   match.paused = opts.paused !== false; // starts paused: the admin presses play
   match.kickoff(); // some parameters (packet width, wall mode) take effect at kick-off
+  // Game log for post-mortems (gamelog.js): opts.logDir turns it on (the server's main sets it unless LOG=0).
+  const log = opts.logDir ? new GameLog(opts.logDir, { build: BUILD, preset: opts.preset || 'custom', params: { ...match.params }, bots: control.slice() }, { densEvery: opts.densEvery }) : null;
+  const ev = (e, data) => { if (log) log.event(e, data); };
   const fresh = () => { // the admin reloaded: back to the starting controllers and sliders, a new match, paused
     control.splice(0, 2, ...(opts.bots || ['random', 'random']).slice(0, 2));
     match.botState = [{}, {}];
@@ -74,6 +78,7 @@ function start(port, opts = {}) {
     match.paused = true;
     match.phase = 'waiting'; // assign() then restarts the match (score, clock, kick-off) once both teams are present
     match.setPresent(0, false);
+    ev('fresh', { params: { ...match.params }, bots: control.slice() });
   };
   // Members are clients identified by a token (?id=) that the page keeps across reloads, in join order: the order gives the name
   // ("Client 3") and decides the admin (the earliest) and who gets a free human team. A member whose socket closed stays as a ghost
@@ -143,6 +148,7 @@ function start(port, opts = {}) {
       assign(c);
       hello(c);
     }
+    ev('join', { name: c.name, role: role(c), slot: c.slot });
 
     sock.on('data', makeParser(sock, (text) => {
       let m;
@@ -153,19 +159,23 @@ function start(port, opts = {}) {
         match.botState = [{}, {}];
         assign();
         broadcast({ t: 'control', bots: control });
+        ev('control', { by: c.name, team: m.team, who: m.who, bots: control.slice() });
         return;
       }
-      if (m.t === 'pause' && c === admin()) { match.paused = !!m.on; broadcast({ t: 'paused', paused: match.paused }); return; }
-      if (m.t === 'param' && role(c) !== 'spectator' && match.setParam(m.k, m.v)) { broadcast({ t: 'params', params: match.params }); return; } // the admin and the human change the physics, even when no team is theirs
+      if (m.t === 'pause' && c === admin()) { match.paused = !!m.on; broadcast({ t: 'paused', paused: match.paused }); ev('pause', { by: c.name, on: match.paused }); return; }
+      if (m.t === 'param' && role(c) !== 'spectator' && match.setParam(m.k, m.v)) { broadcast({ t: 'params', params: match.params }); ev('param', { by: c.name, k: m.k, v: match.params[m.k] }); return; } // the admin and the human change the physics, even when no team is theirs
       if (c.slot < 0) return; // spectators only watch
       const mine = Number.isInteger(m.p) && m.p >= 0 && m.p < TEAM_SIZE ? c.slot * TEAM_SIZE + m.p : -1; // you only command your own four
-      if (m.t === 'order' && mine >= 0) match.setOrder(mine, m.vx, m.vy);
-      else if (m.t === 'move' && mine >= 0) match.moveTo(mine, m.x, m.y, !!m.queue);
-      else if (m.t === 'stance' && mine >= 0) match.setStance(mine, m.s);
+      if (mine < 0 || !['order', 'move', 'stance'].includes(m.t)) return;
+      if (m.t === 'order') match.setOrder(mine, m.vx, m.vy);
+      else if (m.t === 'move') match.moveTo(mine, m.x, m.y, !!m.queue);
+      else match.setStance(mine, m.s);
+      ev(m.t, { by: c.name, i: mine, ...(m.t === 'order' ? { vx: m.vx, vy: m.vy } : m.t === 'move' ? { x: m.x, y: m.y, queue: !!m.queue } : { s: m.s }) }); // the player's resulting state is in the next frame
     }));
     const drop = () => {
       if (c.sock !== sock) return;
       c.sock = null;
+      ev('leave', { name: c.name });
       c.timer = setTimeout(() => forget(c), GRACE_MS);
       c.timer.unref();
     };
@@ -177,7 +187,9 @@ function start(port, opts = {}) {
   const timer = setInterval(() => {
     const now = Date.now();
     if ((control[0] || control[1]) && !match.paused) bots.drive(match, control);
-    match.step(Math.min(0.1, (now - last) / 1000)); // a no-op while paused
+    const dt = Math.min(0.1, (now - last) / 1000), live = !match.paused && match.phase !== 'waiting';
+    match.step(dt); // a no-op while paused
+    if (log && live) log.frame(match, dt);
     last = now;
     if (![...members.values()].some((c) => c.sock)) return;
     const s = match.snapshot();
@@ -185,7 +197,8 @@ function start(port, opts = {}) {
     s.dens = Buffer.from(s.dens).toString('base64');
     broadcast(s);
   }, TICK_MS);
-  server.on('close', () => { clearInterval(timer); members.forEach((c) => clearTimeout(c.timer)); });
+  server.on('close', () => { clearInterval(timer); members.forEach((c) => clearTimeout(c.timer)); if (log) log.close(); });
+  server.gameLog = log; // tests and tools find the file here (log.file)
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, opts.host, () => { server.off('error', reject); resolve(server); }); });
 }
 
@@ -221,8 +234,10 @@ function killOld(port) {
 }
 if (require.main === module) {
   const port = Number(process.env.PORT) || 8080;
-  const go = (retry) => start(port, parseEnv(process.env)).then(
-    () => console.log('Quantum Football on http://localhost:' + port),
+  // LOG_DIR=<dir> (default logs/ next to server.js) gets one game log per run; LOG=0 turns it off.
+  const logDir = process.env.LOG === '0' ? null : process.env.LOG_DIR || path.join(__dirname, 'logs');
+  const go = (retry) => start(port, { ...parseEnv(process.env), logDir }).then(
+    (server) => console.log('Quantum Football on http://localhost:' + port + (server.gameLog ? '; game log: ' + server.gameLog.file : '')),
     (err) => {
       if (err.code === 'EADDRINUSE' && retry && killOld(port)) return new Promise((r) => setTimeout(r, 500)).then(() => go(false));
       throw err;

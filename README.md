@@ -11,6 +11,11 @@ node --test 'test/*.test.js'
 ```
 Open the page in several browsers: the first connection is the **admin**, the second is the **human**, the others spectate. The match starts **paused**; the admin presses Play. Teams set to `human` go to the admin, then the human. Static files are served with `no-store`, so a refresh loads the latest app. The top band shows the build: date (Europe/Paris) and short hash of the commit the server runs from, read at server start, with "+ local changes" if tracked files were modified; restart the server after pulling to see the new one.
 
+## Game log
+Each server run writes a game log for post-mortems (tuning, bug hunts): `logs/<Paris date-time>.jsonl` (gitignored; `LOG_DIR=<dir>` elsewhere, `LOG=0` off); the console prints its path at start.
+One JSON object per line: a `head` (build, preset, sliders, controllers), events (`join`/`leave`, every accepted `order`/`move`/`stance` with the client and player, `param`, `control`, `pause`, `fresh`, `phase` changes, `goal` with the goal probabilities), a frame every tick while the match runs (clock, score, goal probabilities, the ball's mean, spread, covariance and hottest cell, all eight players as `[x, y, hx, hy, vx, vy, stance]`), and the full ball density once a second and at each goal. About 1 MB per minute of play. Format details: top of `gamelog.js`.
+Read one back with `node tools/postmortem.js [log]` (default: the newest): a summary (events, commands counted, the ball every 5 s); `--csv` one row per frame; `--at 42.5` the pitch at that second as text (ball shades, players 0-7); `--events` every event.
+
 ## Play
 You command four players. Drag from one of your players and drop: it runs there at full speed and stops (thin dotted line = its path). **Shift**-drop adds the destination after the current path, and with Shift the drag can start anywhere (away from your players it moves the selected one; a Shift-click queues the clicked spot); a click on a player stops it. Keys **1** Defense (wide catch, kicks straight ahead),
 **2** Pass (catches just ahead, medium kick split among the allies, the more advanced the likelier), **3** Shot (catches just ahead, hard kick at the opposing goal),

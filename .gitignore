@@ -11,3 +11,5 @@
 /.ripgreprc
 /.vscode
 /.idea
+
+/logs/
