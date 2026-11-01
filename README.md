@@ -12,8 +12,9 @@ node --test 'test/*.test.js'
 Open the page in two browsers: the first two connections play (blue/red), the next ones spectate.
 
 ## Play
-You command four players. Drag from one of your players: the drag is its velocity vector (a click stops it). Keys **1** Attack (well carries the ball),
-**2** Defense (wall repels it), **3** Pass (strong forward kick) set the selected player's stance; **Q/W/E/R** select players 1-4.
+You command four players. Drag from one of your players: the drag is its velocity vector (a click stops it). Keys **1** Defense (wide catch, kicks straight ahead),
+**2** Pass (catches just ahead, medium kick split among the allies, the more advanced the likelier), **3** Shot (catches just ahead, hard kick at the opposing goal),
+**4** Dribble (catches just ahead and keeps the ball there) set the selected player's stance; **Q/W/E/R** select players 1-4.
 Sliders on the right change the physics for both players.
 
 Docs: [docs/PHYSICS.md](docs/PHYSICS.md) (the physics: equation, discretisation, player forces, goals; kept in sync with `sim.js`), [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/ASYMMETRY.md](docs/ASYMMETRY.md) (left/right fairness: what was wrong and how it is checked), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed), [docs/PLOT-ENGINE.md](docs/PLOT-ENGINE.md) (the ball's characteristic length as a story and pacing device).

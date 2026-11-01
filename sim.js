@@ -17,7 +17,12 @@ const NP = 2 * TEAM_SIZE;
 const COUNTDOWN_S = 3;
 const GOAL_PAUSE_S = 2.5;
 const OVER_PAUSE_S = 10;
-const STANCE = { ATTACK: 0, DEFENSE: 1, PASS: 2 };
+// Every stance is a catch well (a moving attractive Gaussian ahead of the player) plus, except Dribble, a kick of the caught wave.
+const STANCE = { DEFENSE: 0, PASS: 1, SHOT: 2, DRIBBLE: 3 };
+// The kick window is wider than the catch well: kappa*g(r)*d.r has a reversed momentum in its tails (|d.r| > sigma), so a narrow window would kick the caught wave unevenly.
+const KICK_WIDTH = 2;
+const PULSE_S = 0.4; // seconds between the splits of a Pass to several allies
+const KICK_GAIN = [0.7, 0.5, 1.0, 0]; // by stance: Defense clears straight (fairly hard), Pass medium, Shot high, Dribble none
 
 // Every slider. Units: lengths in metres, "game time" = real time x timeScale.
 const PARAMS = {
@@ -30,9 +35,9 @@ const PARAMS = {
   matchSeconds:{ min: 30,   max: 600,  def: 180,  step: 10,   label: 'Match duration (s)' },
   runSpeed:    { min: 2,    max: 30,   def: 12,   step: 0.5,  label: 'Player max speed (m/s)' },
   reach:       { min: 1.5,  max: 12,   def: 8,    step: 0.1,  label: 'Player reach (m)' },
-  wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Attack: well depth' },
-  wallHeight:  { min: 0,    max: 4,    def: 3,    step: 0.05, label: 'Defense: wall height' },
-  autoAim:     { min: 0,    max: 1,    def: 1,    step: 1,    label: 'Auto-aim kicks at teammate/goal (0 = along heading)' },
+  wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Pass/Shot/Dribble: catch well depth' },
+  wallHeight:  { min: 0,    max: 4,    def: 1,    step: 0.05, label: 'Defense: wide catch well depth' },
+  autoAim:     { min: 0,    max: 1,    def: 1,    step: 1,    label: 'Auto-aim pass/shot at allies/goal (0 = along heading)' },
   additive:    { min: 0,    max: 1,    def: 0,    step: 1,    label: 'Walls: coherent (0) / additive (1), next kick-off' },
   kick:        { min: 0,    max: 3,    def: 2,    step: 0.05, label: 'Kick strength (momentum/s)' },
 };
@@ -69,7 +74,7 @@ class Match {
     this.present = [false, false];
     this.score = [0, 0];
     // players 0-3 are team 0 (attack right), 4-7 team 1 (attack left). v = velocity order (m/s), h = heading.
-    this.players = Array.from({ length: NP }, (_, i) => ({ x: 0, y: H / 2, vx: 0, vy: 0, hx: i < TEAM_SIZE ? 1 : -1, hy: 0, stance: STANCE.ATTACK }));
+    this.players = Array.from({ length: NP }, (_, i) => ({ x: 0, y: H / 2, vx: 0, vy: 0, hx: i < TEAM_SIZE ? 1 : -1, hy: 0, stance: STANCE.DRIBBLE }));
     this.phase = 'waiting';
     this.timer = 0;
     this.remaining = this.params.matchSeconds;
@@ -122,7 +127,7 @@ class Match {
   }
 
   setStance(i, s) {
-    if (s === 0 || s === 1 || s === 2) this.players[i].stance = s;
+    if (s === 0 || s === 1 || s === 2 || s === 3) this.players[i].stance = s;
   }
 
   setGrid(add) {
@@ -285,82 +290,94 @@ class Match {
 
   // Call fn for a thing at (cx, cy) heading (hx, hy): once on the pitch, and in additive mode also for its three mirror images.
   eachImage(cx, cy, hx, hy, fn) {
-    fn(cx, cy, hx, hy);
-    if (this.add) { fn(-cx, cy, -hx, hy); fn(cx, -cy, hx, -hy); fn(-cx, -cy, -hx, -hy); }
+    fn(cx, cy, hx, hy, 1, 1);
+    if (this.add) { fn(-cx, cy, -hx, hy, -1, 1); fn(cx, -cy, hx, -hy, 1, -1); fn(-cx, -cy, -hx, -hy, -1, -1); }
   }
 
-  // Multiply psi by exp(i kappa g(r) d.r): a momentum kick of kappa along d, weighted by amplitude.
-  kickPhase(cx, cy, hx, hy, sigma, kappa) {
+  // Kick: a momentum kick of kappa along each direction of `dirs` ([{hx, hy, a}], sum of a^2 = 1), weighted by amplitude.
+  // One direction: psi *= exp(i kappa g(r) d.r). Several: the caught wave is split into a superposition with one momentum component per direction,
+  // psi *= (1 - g) + g * conj(c0) * sum_j a_j exp(i (ph_j + kappa g(r) d_j.r)), so each direction gets probability a_j^2 (the (1 - g) term keeps the window's
+  // edge continuous). The offsets ph_j (largest component 0, the others a common angle) make |c0| = |sum a_j exp(i ph_j)| = 1: at the window's centre the factor
+  // is 1, the density is not bumped there, and the components only show up as fringes. A split is a finite event, not a force: a Pass fires it in pulses
+  // (see buildPotential), because repeating it every tick would only average the directions.
+  // The factors of different players multiply pointwise, so they commute: left/right mirrored teams stay mirror images whatever the order of the players.
+  kickPhase(cx, cy, dirs, sigma, kappa, flip = 1) {
     const { R, I } = this;
+    const many = dirs.length > 1;
+    let ph = null, c0r = 1, c0i = 0;
+    if (many) {
+      let top = 0; dirs.forEach((d, j) => { if (d.a > dirs[top].a + 1e-9) top = j; }); // the tolerance keeps mirrored teams choosing the same one
+      const a1 = dirs[top].a, S = dirs.reduce((t, d, j) => t + (j === top ? 0 : d.a), 0);
+      const beta = S > 0 ? Math.acos(clamp((1 - a1 * a1 - S * S) / (2 * a1 * S), -1, 1)) : 0;
+      ph = dirs.map((d, j) => (j === top ? 0 : flip * beta)); // the sign alternates from pulse to pulse: the first-order amplitude tilt of a split would otherwise always favour the same side
+      c0r = ph.reduce((t, p, j) => t + dirs[j].a * Math.cos(p), 0); c0i = ph.reduce((t, p, j) => t + dirs[j].a * Math.sin(p), 0);
+      const n = Math.hypot(c0r, c0i) || 1; c0r /= n; c0i /= -n; // conj(c0)
+    }
     this.forBox(cx, cy, 4 * sigma, (i, dx, dy) => {
       const g = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
-      const th = kappa * g * (dx * hx + dy * hy);
-      const c = Math.cos(th), s = Math.sin(th);
+      let c, s;
+      if (!many) {
+        const th = kappa * g * (dx * dirs[0].hx + dy * dirs[0].hy);
+        c = Math.cos(th); s = Math.sin(th);
+      } else {
+        let sr = 0, si = 0;
+        dirs.forEach((d, j) => { const th = ph[j] + kappa * g * (dx * d.hx + dy * d.hy); sr += d.a * Math.cos(th); si += d.a * Math.sin(th); });
+        c = 1 - g + g * (sr * c0r - si * c0i); s = g * (sr * c0i + si * c0r);
+      }
       const r = R[i], m = I[i];
       R[i] = r * c - m * s;
       I[i] = r * s + m * c;
     });
   }
 
-  // Where player i's kick goes (Pass and Attack stances): the cheapest of the opposing goal and each teammate's PREDICTED position.
-  // Teammates in Defense stance (their wall would repel the ball) and teammates not at least 5 m closer to the goal are not candidates.
-  // cost = distance to the target + half the distance from the target to the goal (+ a penalty if an opposing wall stands on the way).
-  // The prediction moves a teammate along its velocity order for the time the ball needs (distance / estimated ball speed).
-  // With autoAim off the kick goes along the player's heading.
-  aim(i) {
-    const p = this.players[i], P = this.params;
-    if (!P.autoAim) return { dx: p.hx, dy: p.hy, tx: clamp(p.x + p.hx * 15, 0, W), ty: clamp(p.y + p.hy * 15, 0, H) };
-    const team = i < TEAM_SIZE ? 0 : 1, mate0 = team * TEAM_SIZE, foe0 = (1 - team) * TEAM_SIZE;
-    const goal = { x: team === 0 ? W : 0, y: H / 2 };
-    const speed = clamp(0.7 * P.kick * P.timeScale / P.mass, 2, 30); // estimated ball speed (m/s) after a one-second kick
-    const walls = [];
-    for (let j = foe0; j < foe0 + TEAM_SIZE; j++) if (this.players[j].stance === STANCE.DEFENSE) walls.push(this.players[j]);
-    const blocked = (c) => walls.some((f) => {
-      const ex = c.x - p.x, ey = c.y - p.y, len2 = ex * ex + ey * ey || 1;
-      const u = clamp(((f.x - p.x) * ex + (f.y - p.y) * ey) / len2, 0, 1);
-      return Math.hypot(f.x - (p.x + u * ex), f.y - (p.y + u * ey)) < 0.6 * P.reach;
-    });
-    const cost = (c) => Math.hypot(c.x - p.x, c.y - p.y) + 0.5 * Math.hypot(goal.x - c.x, goal.y - c.y) + (blocked(c) ? 30 : 0);
-    let best = goal, bc = cost(goal);
-    for (let j = mate0; j < mate0 + TEAM_SIZE; j++) {
-      if (j === i || this.players[j].stance === STANCE.DEFENSE) continue; // a defender's wall would repel the ball
+  // Where player i's kick goes: a list of {dx, dy, tx, ty, w} (unit direction, target point, probability weight; weights sum to 1). Empty for Dribble.
+  //  Defense: straight ahead along the heading.
+  //  Shot: the opposing goal centre.
+  //  Pass: every ally (own position extrapolated along its velocity order for the time the ball needs), weighted by its distance from our own goal line,
+  //        so the allies closest to the opposing goal are the most likely receivers; allies within 2 m are skipped, with no ally the pass goes to the goal.
+  // With autoAim off, Pass and Shot go along the heading.
+  aims(i) {
+    const p = this.players[i], P = this.params, st = p.stance;
+    if (st === STANCE.DRIBBLE) return [];
+    const one = (tx, ty) => { const L = Math.hypot(tx - p.x, ty - p.y) || 1; return { dx: (tx - p.x) / L, dy: (ty - p.y) / L, tx, ty, w: 1 }; };
+    if (st === STANCE.DEFENSE || !P.autoAim) return [{ dx: p.hx, dy: p.hy, tx: clamp(p.x + p.hx * 15, 0, W), ty: clamp(p.y + p.hy * 15, 0, H), w: 1 }];
+    const team = i < TEAM_SIZE ? 0 : 1, goalX = team === 0 ? W : 0, ownX = team === 0 ? 0 : W;
+    if (st === STANCE.SHOT) return [one(goalX, H / 2)];
+    const speed = clamp(KICK_GAIN[STANCE.PASS] * P.kick * P.timeScale / P.mass, 2, 30); // estimated ball speed (m/s) after a one-second kick
+    const out = [];
+    for (let j = team * TEAM_SIZE; j < (team + 1) * TEAM_SIZE; j++) {
+      if (j === i) continue;
       const m = this.players[j], T = clamp(Math.hypot(m.x - p.x, m.y - p.y) / speed, 0, 4);
-      const c = { x: clamp(m.x + m.vx * T, 0, W), y: clamp(m.y + m.vy * T, 0, H) };
-      if (Math.hypot(c.x - p.x, c.y - p.y) < 3) continue; // too close to be a pass
-      if (Math.hypot(goal.x - c.x, goal.y - c.y) > Math.hypot(goal.x - p.x, goal.y - p.y) - 5) continue; // only forward passes
-      const k = cost(c);
-      if (k < bc) { bc = k; best = c; }
+      const tx = clamp(m.x + m.vx * T, 0, W), ty = clamp(m.y + m.vy * T, 0, H);
+      if (Math.hypot(tx - p.x, ty - p.y) < 2) continue;
+      const t = one(tx, ty); t.w = 1 + Math.abs(m.x - ownX); out.push(t);
     }
-    const L = Math.hypot(best.x - p.x, best.y - p.y) || 1;
-    return { dx: (best.x - p.x) / L, dy: (best.y - p.y) / L, tx: best.x, ty: best.y };
+    if (!out.length) return [one(goalX, H / 2)];
+    const sum = out.reduce((a, t) => a + t.w, 0);
+    out.forEach((t) => { t.w /= sum; });
+    return out;
   }
 
   buildPotential(dtReal) {
     const { V, params: P } = this;
     V.fill(0, 0, this.gn);
-    const sig = P.reach * 0.6;
     this.players.forEach((p, i) => {
-      const a = p.stance === STANCE.DEFENSE ? null : this.aim(i); // where an Attack push or a Pass goes
-      p.aim = a ? { tx: a.tx, ty: a.ty } : null;
-      if (p.stance === STANCE.ATTACK) {
-        // Moving attractive well: carries the wave along with the player, plus a gentle forward push.
-        this.eachImage(p.x, p.y, a.dx, a.dy, (cx, cy, hx, hy) => {
-          this.forBox(cx, cy, 4 * sig, (c, dx, dy) => { V[c] -= P.wellDepth * Math.exp(-(dx * dx + dy * dy) / (2 * sig * sig)); });
-          this.kickPhase(cx, cy, hx, hy, sig, 0.15 * P.kick * dtReal);
-        });
-      } else if (p.stance === STANCE.DEFENSE) {
-        // Repulsive wall in front of the player, perpendicular to heading.
-        const su = 0.35 * P.reach, sw = 1.2 * P.reach, off = P.reach;
-        this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy) => {
-          this.forBox(cx + hx * off, cy + hy * off, 4 * sw, (c, dx, dy) => {
-            const u = dx * hx + dy * hy, w = -dx * hy + dy * hx;
-            V[c] += P.wallHeight * Math.exp(-(u * u) / (2 * su * su) - (w * w) / (2 * sw * sw));
-          });
-        });
-      } else {
-        // Pass: strong forward kick just ahead of the player.
-        this.eachImage(p.x, p.y, a.dx, a.dy, (cx, cy, hx, hy) => this.kickPhase(cx + hx * P.reach, cy + hy * P.reach, hx, hy, 4 * sig, 0.7 * P.kick * dtReal));
-      }
+      const aims = this.aims(i);
+      p.aim = aims.length ? aims.map((t) => ({ tx: t.tx, ty: t.ty, w: t.w })) : null;
+      // Catch well just ahead of the player (wide and a bit farther for Defense), carried along as the player moves; then the kick of the caught wave.
+      const def = p.stance === STANCE.DEFENSE;
+      const sig = (def ? 1.5 : 0.8) * P.reach, off = (def ? 1.2 : 0.8) * P.reach, depth = def ? P.wallHeight : P.wellDepth;
+      let kappa = KICK_GAIN[p.stance] * P.kick * dtReal, fire = true;
+      if (aims.length > 1) { // a Pass to several allies is a split, fired in pulses of the impulse of PULSE_S seconds
+        p.pulse = (p.pulse === undefined ? PULSE_S : p.pulse) + dtReal;
+        fire = p.pulse >= PULSE_S; kappa = KICK_GAIN[p.stance] * P.kick * PULSE_S;
+        if (fire) { p.pulse -= PULSE_S; p.pulses = (p.pulses || 0) + 1; }
+      } else { p.pulse = undefined; p.pulses = 0; }
+      this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy, sx, sy) => {
+        const wx = cx + hx * off, wy = cy + hy * off;
+        this.forBox(wx, wy, 4 * sig, (c, dx, dy) => { V[c] -= depth * Math.exp(-(dx * dx + dy * dy) / (2 * sig * sig)); });
+        if (aims.length && kappa > 0 && fire) this.kickPhase(wx, wy, aims.map((t) => ({ hx: t.dx * sx, hy: t.dy * sy, a: Math.sqrt(t.w) })), KICK_WIDTH * sig, kappa, p.pulses % 2 ? -1 : 1);
+      });
     });
   }
 

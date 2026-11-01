@@ -5,10 +5,11 @@
 //   fortress  all four players in defense stance around our own goal, facing the ball, to deflect everything
 //   shadow    two players mark the two most advanced opponents; the other two attack with passes
 //   lanes     the four players run sideways, each in its own quarter of the pitch length (two defend, two attack)
-//   relay     a bucket brigade: player 0 passes from behind the ball, players 1-3 stand as stepping stones on the way to the goal, in attack stance
+//   relay     a bucket brigade: player 0 passes from behind the ball, players 1-3 stand as stepping stones on the way to the goal, in dribble stance
 //   plow      the four players form a wall line (defense stance) and advance together, pushing the wave in front of them toward the goal
 //   random    every player picks a random velocity and stance every 0.5-2 s (not mirror-symmetric, by design)
-const { W, H, N, TEAM_SIZE } = require('./sim');
+const { W, H, N, TEAM_SIZE, STANCE } = require('./sim');
+const { DEFENSE, PASS, DRIBBLE } = STANCE;
 
 function centroid(m) {
   let sx = 0, sy = 0;
@@ -36,7 +37,7 @@ function passers(m, k, ks, c, gx, gy) {
     const side = (n ? 2 : -2) * k.d; // times the attack direction, so that the two teams are mirror images of each other
     const tx = c.x - ux * 5 - uy * side, ty = c.y - uy * 5 + ux * side;
     const there = Math.hypot(p.x - tx, p.y - ty) < 3;
-    m.setStance(i, there ? 2 : 0);
+    m.setStance(i, there ? PASS : DRIBBLE);
     goTo(m, i, tx, ty, ux, uy);
   });
 }
@@ -44,7 +45,7 @@ function passers(m, k, ks, c, gx, gy) {
 function wallLine(m, k, c, depth) { // four defenders in a line in front of our goal, facing the ball
   [0.3, 0.43, 0.57, 0.7].forEach((fy, n) => {
     const i = k.base + n, x = k.own + k.d * depth;
-    m.setStance(i, 1);
+    m.setStance(i, DEFENSE);
     goTo(m, i, x, fy * H, c.x - x, c.y - fy * H);
   });
 }
@@ -54,23 +55,23 @@ const STRATEGIES = {
     const k = ctx(t);
     if (Math.floor(m.remaining / 12) % 2 !== t) { wallLine(m, k, c, 18); return; }
     passers(m, k, [0, 1], c, W - k.own, H / 2);
-    [2, 3].forEach((n) => { m.setStance(k.base + n, 0); goTo(m, k.base + n, c.x - k.d * 12, c.y + (n === 2 ? -8 : 8), k.d, 0); });
+    [2, 3].forEach((n) => { m.setStance(k.base + n, DRIBBLE); goTo(m, k.base + n, c.x - k.d * 12, c.y + (n === 2 ? -8 : 8), k.d, 0); });
   },
 
   receiver(m, t, c) {
     const k = ctx(t), goalX = W - k.own;
     const rx = goalX - k.d * 8, ry = H / 2; // the target man, next to the opposing goal, facing the ball
-    m.setStance(k.base, 0); goTo(m, k.base, rx, ry, c.x - rx, c.y - ry);
+    m.setStance(k.base, DRIBBLE); goTo(m, k.base, rx, ry, c.x - rx, c.y - ry);
     passers(m, k, [1, 2], c, rx, ry);
     const g = k.base + 3, gx = k.own + k.d * 10;
-    m.setStance(g, 1); goTo(m, g, gx, H / 2, c.x - gx, c.y - H / 2);
+    m.setStance(g, DEFENSE); goTo(m, g, gx, H / 2, c.x - gx, c.y - H / 2);
   },
 
   fortress(m, t, c) {
     const k = ctx(t);
     [-9, -3, 3, 9].forEach((dy, n) => {
       const i = k.base + n, x = k.own + k.d * 10, y = clamp(H / 2 + dy + (c.y - H / 2) * 0.3, 3, H - 3);
-      m.setStance(i, 1); goTo(m, i, x, y, c.x - x, c.y - y);
+      m.setStance(i, DEFENSE); goTo(m, i, x, y, c.x - x, c.y - y);
     });
   },
 
@@ -82,7 +83,7 @@ const STRATEGIES = {
     const adv = [0, 1, 2, 3].map((n) => ({ n, x: m.players[foe + n].x, y: m.players[foe + n].y })).sort(byAdvance).slice(0, 2);
     adv.forEach((o, n) => { // stand between the opponent and our goal, wall facing him
       const i = k.base + n, x = o.x - k.d * 3;
-      m.setStance(i, 1); goTo(m, i, x, o.y, o.x - x, 0);
+      m.setStance(i, DEFENSE); goTo(m, i, x, o.y, o.x - x, 0);
     });
     passers(m, k, [2, 3], c, W - k.own, H / 2);
   },
@@ -94,7 +95,7 @@ const STRATEGIES = {
       const i = k.base + n, p = m.players[i];
       const lane = k.t === 0 ? n : TEAM_SIZE - 1 - n; // lane 0 is the quarter next to the left wall
       const cx = W / 8 + lane * W / 4, ownHalf = Math.abs(cx - k.own) < W / 2;
-      m.setStance(i, ownHalf ? 1 : 0);
+      m.setStance(i, ownHalf ? DEFENSE : DRIBBLE);
       if (Math.abs(p.x - cx) > 2) { m.setOrder(i, (cx - p.x) * 2, 0); continue; } // first get into the lane
       if (p.y < 5) st.dir[n] = 1; else if (p.y > H - 5) st.dir[n] = -1;
       m.setOrder(i, 0, st.dir[n] * Math.min(8, m.params.runSpeed)); // sideways only
@@ -105,10 +106,10 @@ const STRATEGIES = {
     const k = ctx(t), gx = W - k.own;
     const L = Math.hypot(gx - c.x, H / 2 - c.y) || 1, ux = (gx - c.x) / L, uy = (H / 2 - c.y) / L;
     const p = m.players[k.base], tx = c.x - ux * 5, ty = c.y - uy * 5;
-    m.setStance(k.base, Math.hypot(p.x - tx, p.y - ty) < 3 ? 2 : 0); goTo(m, k.base, tx, ty, ux, uy);
+    m.setStance(k.base, Math.hypot(p.x - tx, p.y - ty) < 3 ? PASS : DRIBBLE); goTo(m, k.base, tx, ty, ux, uy);
     [1, 2, 3].forEach((n) => { // stones every 12 m toward the goal; they never go past 8 m from the goal line
       const i = k.base + n, d = Math.min(12 * n, Math.max(0, L - 8));
-      m.setStance(i, 0); goTo(m, i, c.x + ux * d, c.y + uy * d, ux, uy);
+      m.setStance(i, DRIBBLE); goTo(m, i, c.x + ux * d, c.y + uy * d, ux, uy);
     });
   },
 
@@ -120,7 +121,7 @@ const STRATEGIES = {
       if (st.ticks < st.until[n]) continue;
       st.until[n] = st.ticks + 15 + Math.random() * 45;
       const a = Math.random() * 2 * Math.PI, v = Math.random() * m.params.runSpeed;
-      m.setStance(k.base + n, Math.floor(Math.random() * 3));
+      m.setStance(k.base + n, Math.floor(Math.random() * 4));
       m.setOrder(k.base + n, Math.cos(a) * v, Math.sin(a) * v);
     }
   },
@@ -132,7 +133,7 @@ const STRATEGIES = {
       // advance at 5 m/s, faster if we have fallen behind the ball; hold at the stop line
       const behind = (c.x - k.d * 12 - p.x) * k.d, atStop = (stopX - p.x) * k.d <= 0;
       const vx = atStop ? 0 : k.d * clamp(5 + behind * 0.5, 0, 9);
-      m.setStance(i, 1); m.setOrder(i, vx, (fy * H - p.y) * 2);
+      m.setStance(i, DEFENSE); m.setOrder(i, vx, (fy * H - p.y) * 2);
       if (!vx) m.face(i, k.d, 0);
     });
   },

@@ -21,7 +21,7 @@ for (const preset of ['default', 'waves', 'additive']) {
   for (let k = 0; k < 30 * 60; k++) {
     const t = k / 30;
     for (let n = 0; n < 4; n++) {
-      const st = [0, 2, 1, 0][(Math.floor(t / 7) + n) % 4 % 3], vx = 6 * Math.cos(t / 3 + n), vy = 5 * Math.sin(t / 4 + n);
+      const st = (Math.floor(t / 7) + n) % 4, vx = 6 * Math.cos(t / 3 + n), vy = 5 * Math.sin(t / 4 + n);
       m.setStance(n, st); m.setStance(n + 4, st); m.setOrder(n, vx, vy); m.setOrder(n + 4, -vx, vy);
     }
     m.step(1 / 30); if (k % 15 === 0) worst = Math.max(worst, mirrorError(m));

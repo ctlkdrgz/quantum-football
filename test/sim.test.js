@@ -1,19 +1,20 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Match, PARAMS, PRESETS, W, H, N, GOAL_DEPTH, NP } = require('../sim');
+const { Match, PARAMS, PRESETS, STANCE, W, H, N, GOAL_DEPTH, NP } = require('../sim');
+const { DEFENSE, PASS, SHOT, DRIBBLE } = STANCE;
 
 const playing = () => { const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; return m; };
-// No player influences the wave: walls of height 0 and no wells.
-const quiet = (m) => { m.setParam('wallHeight', 0); m.setParam('wellDepth', 0); for (let i = 0; i < NP; i++) m.setStance(i, 1); };
+// No player influences the wave: Dribble (no kick) with a well of depth 0.
+const quiet = (m) => { m.setParam('wallHeight', 0); m.setParam('wellDepth', 0); for (let i = 0; i < NP; i++) m.setStance(i, DRIBBLE); };
 const run = (m, secs) => { for (let k = 0; k < secs * 30; k++) m.step(1 / 30); };
 const centroidX = (m) => { let s = 0; for (let i = 0; i < N; i++) s += ((i % W) + 0.5) * (m.R[i] ** 2 + m.I[i] ** 2); return s; };
 const total = (m) => { let s = 0; for (let i = 0; i < m.gn; i++) s += m.R[i] ** 2 + m.I[i] ** 2; return s; };
 
 test('total probability stays 1 and nothing blows up', () => {
   const m = playing(); m.setParam('timeScale', 12); m.setParam('wellDepth', 3); m.setParam('wallHeight', 4);
-  for (let i = 0; i < 4; i++) m.setStance(i, 2);
-  for (let i = 4; i < NP; i++) m.setStance(i, 1);
+  for (let i = 0; i < 4; i++) m.setStance(i, PASS);
+  for (let i = 4; i < NP; i++) m.setStance(i, DEFENSE);
   m.setOrder(0, 5, 0); m.setOrder(5, -5, 3);
   run(m, 20);
   assert.ok(Math.abs(total(m) - 1) < 1e-9);
@@ -22,9 +23,9 @@ test('total probability stays 1 and nothing blows up', () => {
 
 test('a kicked packet reflects off the wall and comes back', () => {
   const m = playing(); m.setParam('attenuation', 0); quiet(m);
-  m.players[0].x = 44; m.players[0].y = 25; m.setStance(0, 2); // pass from just behind the ball
+  m.players[0].x = 44; m.players[0].y = 25; m.setStance(0, SHOT); // shot from just behind the ball
   run(m, 2);
-  m.setStance(0, 1);
+  m.setStance(0, DRIBBLE);
   let max = 0, last = 0;
   for (let k = 0; k < 30 * 80; k++) { m.step(1 / 30); const c = centroidX(m); max = Math.max(max, c); last = c; }
   assert.ok(max > 52, 'moved right: ' + max);
@@ -141,7 +142,7 @@ test('additive walls: probability is conserved and a rebound never makes a node 
   const peakAtWall = (additive) => {
     const m = new Match(); m.setParam('additive', additive); m.setParam('packetWidth', 5); m.setParam('attenuation', 0); m.kickoff();
     m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing';
-    for (let i = 0; i < 8; i++) m.setStance(i, 1);
+    for (let i = 0; i < 8; i++) m.setStance(i, DRIBBLE);
     m.setParam('wallHeight', 0); m.setParam('wellDepth', 0);
     // give the packet momentum toward the left wall: phase ramp over the whole grid (torus-safe: whole number of waves not needed, ramp is local to the packet)
     for (let y = 0; y < m.gh; y++) for (let x = 0; x < m.gw; x++) {
@@ -166,11 +167,11 @@ test('additive walls: probability is conserved and a rebound never makes a node 
 test('additive mode: grid switches at kick-off, players still act, mass and goals still work', () => {
   const m = playing(); m.setParam('additive', 1); assert.equal(m.add, false); m.kickoff(); assert.equal(m.add, true);
   assert.equal(m.gn, 4 * N);
-  for (let i = 0; i < 4; i++) m.setStance(i, 2);
-  for (let i = 4; i < 8; i++) m.setStance(i, 1);
-  m.setParam('timeScale', 12); run(m, 10);
+  for (let i = 0; i < 4; i++) m.setStance(i, PASS);
+  for (let i = 4; i < 8; i++) m.setStance(i, DEFENSE);
+  m.setParam('timeScale', 12); m.setParam('threshold', 0.9); run(m, 10);
   assert.ok(Math.abs(total(m) - 1) < 1e-9 && m.R.every(Number.isFinite));
-  m.setParam('attenuation', 0.5); run(m, 1); // smoothing wraps around on the torus too
+  m.setParam('attenuation', 0.5); run(m, 1); m.setParam('threshold', 0.1); // smoothing wraps around on the torus too
   const ln = m.characteristicLength(); assert.ok(ln > 0 && ln <= W);
   m.R.fill(0); m.I.fill(0);
   for (let y = 20; y < 30; y++) for (let x = W - GOAL_DEPTH; x < W - 1; x++) m.R[y * m.gw + x] = 1;
@@ -184,63 +185,99 @@ test('presets only name real parameters inside their ranges', () => {
   for (const p of Object.values(PRESETS)) for (const [k, v] of Object.entries(p)) assert.ok(PARAMS[k] && v >= PARAMS[k].min && v <= PARAMS[k].max, k);
 });
 
-// ---- auto-aim -------------------------------------------------------------------------------------------------
-const park = (m) => { for (let i = 0; i < NP; i++) { m.players[i].x = i < 4 ? 3 : W - 3; m.players[i].y = 3 + 4 * (i % 4); m.setStance(i, 1); m.players[i].hx = i < 4 ? -1 : 1; m.players[i].hy = 0; } };
+// ---- stances and aiming ---------------------------------------------------------------------------------------
+const park = (m) => { for (let i = 0; i < NP; i++) { m.players[i].x = i < 4 ? 3 : W - 3; m.players[i].y = 3 + 4 * (i % 4); m.setStance(i, DRIBBLE); m.players[i].hx = i < 4 ? -1 : 1; m.players[i].hy = 0; } };
 const place = (m, i, x, y, extra = {}) => Object.assign(m.players[i], { x, y, vx: 0, vy: 0, hx: 1, hy: 0 }, extra);
 
-test('aim: alone, a pass goes to the opposing goal; heading is ignored with auto-aim and used without it', () => {
+test('aims: Defense clears along the heading, Shot goes to the goal centre (heading ignored with auto-aim), Dribble does not kick', () => {
   const m = playing(); park(m);
-  place(m, 0, 40, 25, { hx: 0, hy: -1 }); m.setStance(0, 2);
-  const a = m.aim(0);
-  assert.ok(a.dx > 0.99 && Math.abs(a.dy) < 0.05 && a.tx === W && a.ty === H / 2, JSON.stringify(a));
-  m.setParam('autoAim', 0); const b = m.aim(0);
-  assert.deepEqual([b.dx, b.dy], [0, -1]);
+  place(m, 0, 40, 25, { hx: 0, hy: -1 });
+  m.setStance(0, DEFENSE); const d = m.aims(0);
+  assert.equal(d.length, 1); assert.deepEqual([d[0].dx, d[0].dy, d[0].w], [0, -1, 1]);
+  m.setStance(0, SHOT); const s = m.aims(0);
+  assert.ok(s.length === 1 && s[0].dx > 0.99 && Math.abs(s[0].dy) < 0.05 && s[0].tx === W && s[0].ty === H / 2, JSON.stringify(s));
+  m.setParam('autoAim', 0); assert.deepEqual([m.aims(0)[0].dx, m.aims(0)[0].dy], [0, -1], 'without auto-aim a shot follows the heading');
+  m.setStance(0, DRIBBLE); assert.deepEqual(m.aims(0), []);
+  const n = playing(); park(n); place(n, 4, 70, 25); n.setStance(4, SHOT);
+  assert.ok(n.aims(4)[0].dx < -0.99 && n.aims(4)[0].tx === 0, 'team 1 shoots at the left goal');
 });
 
-test('aim: a teammate who is running ahead is led (predicted position), and team 1 aims left', () => {
+test('aims: a pass goes to every ally, weighted by the distance from our own goal line (team 0 from x = 0, team 1 from x = W)', () => {
   const m = playing(); park(m);
-  place(m, 0, 30, 25); place(m, 1, 60, 10, { vx: 8, vy: 0 }); m.setStance(1, 0);
-  const a = m.aim(0);
+  place(m, 0, 40, 25); place(m, 1, 70, 25); place(m, 2, 30, 10); place(m, 3, 10, 40); m.setStance(0, PASS);
+  const a = m.aims(0);
+  assert.equal(a.length, 3);
+  const weights = [71, 31, 11], sum = 113; // 1 + x of the allies
+  a.forEach((t, k) => assert.ok(Math.abs(t.w - weights[k] / sum) < 1e-9, 'weight ' + k + ' ' + t.w));
+  assert.ok(Math.abs(a.reduce((x, t) => x + t.w, 0) - 1) < 1e-9);
+  const n = playing(); park(n); place(n, 4, 60, 25); place(n, 5, 30, 25); place(n, 6, 90, 25); place(n, 7, 95, 5); n.setStance(4, PASS);
+  const b = n.aims(4); // team 1 attacks left: the ally at x = 30 is the most advanced
+  assert.ok(b[0].w > b[1].w && b[1].w > b[2].w && b[0].w > 0.7, b.map((t) => t.w.toFixed(2)).join(' '));
+  m.setParam('autoAim', 0); place(m, 0, 40, 25, { hx: 0, hy: 1 });
+  assert.deepEqual(m.aims(0).map((t) => [t.dx, t.dy, t.w]), [[0, 1, 1]], 'without auto-aim: one pass along the heading');
+});
+
+test('aims: pass targets lead a running ally; allies within 2 m are skipped; with nobody to pass to it goes to the goal', () => {
+  const m = playing(); park(m);
+  place(m, 0, 30, 25); place(m, 1, 60, 10, { vx: 8, vy: 0 }); m.setStance(0, PASS);
+  const a = m.aims(0)[0];
   assert.ok(a.tx > 62 && Math.abs(a.ty - 10) < 1, 'target ' + a.tx + ',' + a.ty); // beyond where he stands now
-  const n = playing(); park(n); place(n, 4, 70, 25); const b = n.aim(4); assert.ok(b.dx < -0.99 && b.tx === 0, 'team 1 attacks the left goal');
+  const n = playing(); park(n); place(n, 0, 30, 25); place(n, 1, 31, 25); place(n, 2, 30, 26); place(n, 3, 29, 25); n.setStance(0, PASS);
+  const g = n.aims(0);
+  assert.ok(g.length === 1 && g[0].tx === W && g[0].ty === H / 2, 'nobody to pass to: the goal ' + JSON.stringify(g));
 });
 
-test('aim: never passes to a defender or backwards', () => {
-  const m = playing(); park(m);
-  place(m, 0, 40, 25); place(m, 1, 70, 25); m.setStance(1, 1); // a teammate in defense stance, ahead
-  assert.equal(m.aim(0).tx, W, 'not to the defender');
-  m.setStance(1, 0); place(m, 1, 20, 25);
-  assert.equal(m.aim(0).tx, W, 'not backwards');
-  place(m, 1, 70, 25); assert.ok(m.aim(0).tx < W, 'a forward attacker is a candidate');
+test('Pass splits the caught wave between the allies; Dribble and Defense behave as described', () => {
+  const sides = (ally2) => {
+    const m = playing(); park(m); m.setParam('attenuation', 0); m.setParam('wellDepth', 0.3);
+    place(m, 0, 45, 25); place(m, 1, 75, 8); place(m, 2, ally2 ? 75 : 45, ally2 ? 42 : 25); place(m, 3, 45, 25); // allies within 2 m of the passer are not receivers
+    m.setStance(0, PASS); run(m, 2.5); m.setStance(0, DRIBBLE); run(m, 1.5);
+    const D = m.density(); let up = 0, down = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { if (y < 20) up += D[y * W + x]; else if (y > 30) down += D[y * W + x]; }
+    return { up, down, total: total(m) };
+  };
+  const two = sides(true), one = sides(false);
+  assert.ok(Math.abs(two.total - 1) < 1e-9);
+  assert.ok(two.up > 0.3 && two.down > 0.3 && Math.abs(two.up - two.down) < 0.1, 'both receivers get an equal share ' + two.up + ' / ' + two.down);
+  assert.ok(one.up > 0.4 && one.down < 0.25, 'a single receiver gets it all ' + one.up + ' / ' + one.down);
 });
 
-test('aim: avoids a line blocked by an opposing wall, and skips teammates that are too close', () => {
-  const m = playing(); park(m);
-  place(m, 0, 30, 25); place(m, 1, 60, 25); place(m, 2, 60, 5); [1, 2].forEach((j) => m.setStance(j, 0)); place(m, 5, 45, 25); // opposing player 5 stands in defense on the direct line
-  const a = m.aim(0);
-  assert.ok(a.ty < 15, 'passes to the open teammate ' + a.tx + ',' + a.ty);
-  const n = playing(); park(n); place(n, 0, 30, 25); place(n, 1, 31, 25); n.setStance(1, 0);
-  assert.equal(n.aim(0).tx, W, 'a teammate 1 m away is not a pass');
+test('Dribble keeps the wave with the player (no kick); Shot kicks it away hard, Pass less, Defense clears it', () => {
+  const right = (stance) => { // mass in the last 38 m after 0.8 s in the stance and 3 s more
+    const m = playing(); park(m); m.setParam('attenuation', 0);
+    place(m, 0, 40, 25); place(m, 1, 80, 25); m.setStance(0, stance); run(m, 0.8); m.setStance(0, DRIBBLE); run(m, 3);
+    const D = m.density(); let s = 0; for (let i = 0; i < N; i++) if (i % W >= 62) s += D[i];
+    return s;
+  };
+  const dribble = right(DRIBBLE), pass = right(PASS), shot = right(SHOT), defense = right(DEFENSE);
+  assert.ok(dribble < 0.22, 'no kick: ' + dribble);
+  assert.ok(pass > dribble + 0.03 && shot > pass + 0.1 && defense > shot, `dribble ${dribble} pass ${pass} shot ${shot} defense ${defense}`);
 });
 
-test('aim: kicks follow the aim, not the heading: a pass facing up still sends the ball toward the goal', () => {
+test('Defense catches over a wide area: its well is wider and farther ahead than the others', () => {
+  const m = playing(); park(m); place(m, 0, 40, 25); m.setStance(0, DEFENSE); m.buildPotential(1 / 30);
+  const dWide = m.V[25 * W + 40 + 12] , dNear = (() => { m.setStance(0, DRIBBLE); m.buildPotential(1 / 30); return m.V[25 * W + 40 + 12]; })();
+  assert.ok(dWide < dNear - 0.2, 'wide well reaches 12 m ahead ' + dWide + ' vs ' + dNear);
+});
+
+test('aim: kicks follow the aim, not the heading: a shot facing up still sends the ball toward the goal', () => {
   const shift = (autoAim) => {
     const m = playing(); park(m); m.setParam('autoAim', autoAim); m.setParam('attenuation', 0);
-    place(m, 0, 40, 25, { hx: 0, hy: -1 }); m.setStance(0, 2);
-    run(m, 3); m.setStance(0, 1); run(m, 6);
+    place(m, 0, 40, 25, { hx: 0, hy: -1 }); m.setStance(0, SHOT);
+    run(m, 0.8); m.setStance(0, DRIBBLE); run(m, 3);
     let cx = 0, cy = 0; const D = m.density(); for (let i = 0; i < N; i++) { cx += ((i % W) + 0.5) * D[i]; cy += (Math.floor(i / W) + 0.5) * D[i]; }
     return { cx, cy };
   };
   const on = shift(1), off = shift(0);
-  assert.ok(on.cx > off.cx + 3, 'auto-aim goes right ' + on.cx + ' vs ' + off.cx);
-  assert.ok(off.cy < on.cy - 1, 'heading up went up ' + off.cy + ' vs ' + on.cy);
+  assert.ok(on.cx > off.cx + 1, 'auto-aim goes right ' + on.cx + ' vs ' + off.cx);
+  assert.ok(off.cy < on.cy - 0.5, 'heading up went up ' + off.cy + ' vs ' + on.cy);
 });
 
 // ---- left/right symmetry ----------------------------------------------------------------------------------------
 const mirrorError = (m) => { const D = m.density(); let e = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W / 2; x++) e = Math.max(e, Math.abs(D[y * W + x] - D[y * W + (W - 1 - x)])); return e; };
 
 test('symmetry [asymmetry fix]: mirrored actors keep the density a mirror image, in every stance and wall mode', () => {
-  for (const additive of [0, 1]) for (const stance of [0, 1, 2]) {
+  for (const additive of [0, 1]) for (const stance of [DEFENSE, PASS, SHOT, DRIBBLE]) {
     const m = playing(); m.setParam('additive', additive); m.kickoff(); m.setParam('threshold', 0.9);
     let worst = 0;
     for (let k = 0; k < 30 * 8; k++) {

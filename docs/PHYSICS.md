@@ -42,18 +42,22 @@ All effects are rebuilt every tick in `buildPotential(dtReal)`: `V` is zeroed, t
 
 3.1 **Common geometry.** `sigma = 0.6 * reach` (reach default 8 m, so sigma = 4.8 m). Windows are truncated at 4 sigma and cover exactly the cells whose centre is within the radius (`forBox`); this exactness is what keeps left/right mirrors identical (ASYMMETRY.md, cause 1).
 
-3.2 **Phase kick (`kickPhase`).** psi is multiplied by `exp(i kappa g(r) d.r)` with `g = exp(-|r|^2 / (2 sigma_k^2))` and `d` the unit aim direction. Near the window centre this adds momentum `kappa * d` to the wave, weighted by the existing amplitude: where there is no ball, nothing happens. Because `g` is not constant, the edge of the window also gets a small radial momentum change; the kick is a local, smooth impulse rather than an exact boost. `kappa = c * kick * dtReal`, so the impulse is **per real second** and independent of the tick rate; `c` depends on the stance (3.4, 3.6).
+3.2 **Phase kick (`kickPhase`).** psi is multiplied by `exp(i kappa g(r) d.r)` with `g = exp(-|r|^2 / (2 sigma_k^2))` and `d` the unit aim direction. Near the window centre this adds momentum `kappa * d` to the wave, weighted by the existing amplitude: where there is no ball, nothing happens. Because `g` is not constant, the edge of the window also gets a small radial momentum change; the kick is a local, smooth impulse rather than an exact boost. `kappa = c * kick * dtReal`, so the impulse is **per real second** and independent of the tick rate; `c` is the stance's kick gain (3.4).
 
-3.3 **Aim (`aim`).** For Attack and Pass the direction is auto-aimed (`autoAim = 1`) at the cheapest of the opposing goal and each teammate's predicted position (cost = distance + 0.5 x teammate-to-goal distance + 30 if an opposing wall is on the line; see SPEC.md for the candidate filters). With `autoAim = 0` it is the heading. Prediction is a physics estimate: travel time = distance / (0.7 * kick * timeScale / mass), clamped to 4 s, and the teammate is extrapolated along their velocity order.
+3.3 **Aims (`aims`).** Returns the kick directions of a player as a list of `{dx, dy, tx, ty, w}` (unit direction, target point, probability weight, weights sum to 1). Dribble: none. Defense: the heading. Shot: the opposing goal centre. Pass: every ally, at its predicted position (travel time = distance / (0.4 * kick * timeScale / mass), clamped to 4 s, extrapolated along its velocity order), with weight proportional to `1 + |x_ally - x_ownGoal|`, so allies nearer the opposing goal are likelier; allies within 2 m are skipped, and with none left the pass goes to the goal. With `autoAim = 0`, Pass and Shot are one direction along the heading.
 
-3.4 **Attack stance.**
-- Potential well: `V -= wellDepth * exp(-r^2 / (2 sigma^2))` at the player. The well is an attractive trap; since it moves with the player, a running attacker drags probability along (adiabatic-ish transport, imperfect: the wave can leak and spreads).
-- Gentle push: `kickPhase(..., sigma, 0.15 * kick * dtReal)` toward the aim.
-- Depth default 0.5. Deep wells compress the ball (see PLOT-ENGINE: they shrink L), shallow ones leak.
+3.4 **Catch and kick (all stances).** Each tick a player contributes (a) a catch well `V -= depth * exp(-r^2 / (2 sigma^2))` centred `off` ahead of the player along the heading, and (b) a phase kick over the same window with `kappa = gain * kick * dtReal` along the aims. Because the well moves with the player, it drags probability along (adiabatic-ish transport, imperfect: the wave can leak and spreads); deep wells compress the ball (see PLOT-ENGINE), shallow ones leak.
 
-3.5 **Defense stance.** A repulsive Gaussian barrier: `V += wallHeight * exp(-u^2/(2 su^2) - w^2/(2 sw^2))`, in the player's frame, `u` along the heading and `w` across it, centred `reach` ahead of the player, `su = 0.35 reach` (thin), `sw = 1.2 reach` (wide). Height default 3. Barrier height vs. the wave's kinetic energy `k^2/(2m)` decides the outcome: a wave with less energy than the height reflects, one with more partially tunnels through (a thin barrier, so tunnelling is real and is part of the game). A moving wall pushes the wave in front of it.
+| Stance | Well centre `off` | Well and kick `sigma` | Depth | Kick gain | Direction |
+|---|---|---|---|---|---|
+| Defense | `reach` | `reach` (wide) | `wallHeight` (default 1) | 0.7 | heading |
+| Pass | `0.6 reach` | `0.6 reach` | `wellDepth` (0.5) | 0.4 (medium) | all allies, weighted |
+| Shot | `0.6 reach` | `0.6 reach` | `wellDepth` | 1.0 (high) | opposing goal |
+| Dribble | `0.6 reach` | `0.6 reach` | `wellDepth` | 0 | none |
 
-3.6 **Pass stance.** One strong kick, `kappa = 0.7 * kick * dtReal`, over a wide window `4 sigma` (19 m) centred `reach` ahead of the player. Because the window moves with the player, a running passer gives only a short push (the ball leaves the window); a still one transfers more momentum. No stamina; the limit is the amplitude inside the window.
+3.5 **Several directions (`kickPhase`).** For a Pass the window factor is `(1 - g) + g * sum_j a_j exp(i kappa g d_j.r)` with `a_j = sqrt(w_j)`: each ally's direction gets a momentum component with probability `w_j` (the `(1 - g)` term keeps the window edge continuous; psi is renormalised after the tick anyway). With one direction it reduces to the plain phase kick of 3.2. In additive mode every mirror image of the player kicks along the mirrored directions.
+
+3.6 **No walls any more.** The old repulsive Defense barrier and the Attack stance are gone: Defense is now a wide catch plus a straight clearance, and Dribble replaces Attack's carrying well without the push.
 
 3.7 **Players themselves** are classical points: velocity orders capped at `runSpeed` (default 12 m/s), clamped to the pitch (a wall zeroes that velocity component), integrated with `x += v dt` (`movePlayers`). No collisions between players, and no effect of the ball on the players.
 
@@ -105,11 +109,11 @@ Wall caveat: the smoothing treats out-of-range neighbours the same as the Hamilt
 | `packetWidth` | 14 | `kickoff` | initial std of the density (m) |
 | `goalHeight`, `threshold` | 20, 0.1 | `goalProbabilities`, `checkGoals` | size of the goal window; probability needed to score |
 | `runSpeed` | 12 | `setOrder`, `movePlayers` | player speed (m/s, real time) |
-| `reach` | 8 | `sigma = 0.6 reach`, wall offset and size | spatial scale of every player effect |
-| `wellDepth` | 0.5 | Attack potential | trap depth (energy units, hbar = 1) |
-| `wallHeight` | 3 | Defense potential | barrier height |
-| `kick` | 2 | all phase kicks | impulse per real second: Pass `0.7 kick`, Attack `0.15 kick` |
-| `autoAim` | 1 | `aim` | 0 = along heading |
+| `reach` | 8 | well offset and size | spatial scale of every player effect |
+| `wellDepth` | 0.5 | Pass/Shot/Dribble catch well | trap depth (energy units, hbar = 1) |
+| `wallHeight` | 1 | Defense catch well | depth of the wide well (name kept from the old barrier) |
+| `kick` | 2 | all phase kicks | impulse per real second times the stance gain: Defense `0.7`, Pass `0.4`, Shot `1.0`, Dribble `0` |
+| `autoAim` | 1 | `aims` | 0 = along heading |
 | `additive` | 0 | `setGrid`, `density` | 0 Dirichlet, 1 mirrored torus (next kick-off) |
 | `matchSeconds` | 180 | match clock | not physics |
 

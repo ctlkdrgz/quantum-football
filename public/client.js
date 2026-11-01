@@ -3,7 +3,7 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const msg = document.getElementById('msg');
 const COLORS = ['#4da3ff', '#ff6b5e'];
-const STANCE_NAMES = ['Attack', 'Defense', 'Pass'];
+const STANCE_NAMES = ['Defense', 'Pass', 'Shot', 'Dribble'];
 let slot = -1, grid = { W: 100, H: 50, goalDepth: 6 }, params = {}, defs = {}, state = null;
 let admin = false, strategies = [], preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
 const sliders = {};
@@ -89,7 +89,7 @@ function syncSliders() {
   }
 }
 
-const STANCE_LETTER = ['A', 'D', 'P'];
+const STANCE_LETTER = ['D', 'P', 'S', 'B'];
 const fieldPos = (e) => {
   const r = canvas.getBoundingClientRect();
   return { x: (e.clientX - r.left) / r.width * grid.W, y: (e.clientY - r.top) / r.height * grid.H };
@@ -103,7 +103,7 @@ function setStance(s) {
 }
 document.querySelectorAll('#stances button').forEach((b) => { b.onclick = () => setStance(Number(b.dataset.s)); });
 addEventListener('keydown', (e) => {
-  if (e.key >= '1' && e.key <= '3') setStance(Number(e.key) - 1);
+  if (e.key >= '1' && e.key <= '4') setStance(Number(e.key) - 1);
   if (e.key === 'q' || e.key === 'w' || e.key === 'e' || e.key === 'r') selected = 'qwer'.indexOf(e.key);
 });
 
@@ -172,22 +172,21 @@ function draw() {
     const sel = mine && k === selected;
     ctx.strokeStyle = COLORS[team]; ctx.fillStyle = COLORS[team];
     ctx.lineWidth = sel ? 3 : 1.5;
-    ctx.setLineDash(p.stance === 1 ? [] : [6, 4]);
+    ctx.setLineDash(p.stance === 0 ? [] : [6, 4]);
     ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill();
     ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 16, y + Math.sin(a) * 16);
     ctx.lineTo(x + Math.cos(a + 2.5) * 8, y + Math.sin(a + 2.5) * 8); ctx.lineTo(x + Math.cos(a - 2.5) * 8, y + Math.sin(a - 2.5) * 8); ctx.fill();
-    if (p.aim) { // where an Attack push / Pass is aimed: a teammate's predicted position or the goal
-      ctx.strokeStyle = COLORS[team] + '66'; ctx.lineWidth = 1; ctx.setLineDash([2, 5]);
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(p.aim.tx * s, p.aim.ty * s); ctx.stroke(); ctx.setLineDash([]);
-      ctx.beginPath(); ctx.arc(p.aim.tx * s, p.aim.ty * s, 4, 0, 7); ctx.stroke(); ctx.strokeStyle = COLORS[team];
+    if (p.aim) { // where the kick goes: one target (Defense, Shot) or every ally (Pass), the line fainter the less likely
+      ctx.lineWidth = 1; ctx.setLineDash([2, 5]);
+      for (const a of p.aim) {
+        ctx.strokeStyle = COLORS[team] + Math.round(40 + 140 * a.w).toString(16).padStart(2, '0');
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(a.tx * s, a.ty * s); ctx.stroke();
+        ctx.setLineDash([]); ctx.beginPath(); ctx.arc(a.tx * s, a.ty * s, 4, 0, 7); ctx.stroke(); ctx.setLineDash([2, 5]);
+      }
+      ctx.setLineDash([]); ctx.strokeStyle = COLORS[team];
     }
     if (p.vx || p.vy) { ctx.lineWidth = 1.5; arrow(x, y, p.vx, p.vy); } // current velocity order
-    if (p.stance === 1) { // defense wall
-      const wx = x + Math.cos(a) * r, wy = y + Math.sin(a) * r, l = 1.2 * r * 1.5;
-      ctx.lineWidth = 4; ctx.beginPath();
-      ctx.moveTo(wx - Math.sin(a) * l, wy + Math.cos(a) * l); ctx.lineTo(wx + Math.sin(a) * l, wy - Math.cos(a) * l); ctx.stroke();
-    }
     ctx.fillStyle = '#fff'; ctx.font = '12px system-ui';
     ctx.fillText((k + 1) + STANCE_LETTER[p.stance] + ' ' + Math.round(state.presence[i] * 100) + '%', x - 14, y - 12);
   });

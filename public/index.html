@@ -35,12 +35,13 @@
     <div id="hud"><span class="s0" id="s0">0</span><span id="msg">connecting…</span><span class="s1" id="s1">0</span></div>
     <canvas id="c" width="1000" height="500"></canvas>
     <div class="stances" id="stances">
-      <button data-s="0">1 · Attack<br><small>well carries the ball</small></button>
-      <button data-s="1">2 · Defense<br><small>wall repels the ball</small></button>
-      <button data-s="2">3 · Pass<br><small>strong forward kick</small></button>
+      <button data-s="0">1 · Defense<br><small>wide catch, clears straight</small></button>
+      <button data-s="1">2 · Pass<br><small>catch ahead, medium kick to allies</small></button>
+      <button data-s="2">3 · Shot<br><small>catch ahead, hard kick at goal</small></button>
+      <button data-s="3">4 · Dribble<br><small>catch ahead, keep it there</small></button>
     </div>
     <small>You command four players. Click or drag from one of your players: the drag is its velocity vector (1 m of drag = 1 m/s), a plain click stops it.
-      The selected player's stance is set with keys 1/2/3 or the buttons; Q/W/E/R select players 1–4. Labels show number, stance (A/D/P) and how much of the ball is near that player.
+      The selected player's stance is set with keys 1/2/3/4 or the buttons; Q/W/E/R select players 1–4. Labels show number, stance (D/P/S/B) and how much of the ball is near that player.
       Bright = where the ball is likely to be. Bars at the goals show the probability of the ball being inside.</small>
   </section>
   <aside><h2>Parameters (shared by both players)</h2><div id="sliders"></div></aside>

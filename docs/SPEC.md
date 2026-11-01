@@ -25,12 +25,13 @@ The equations and numerics behind this are in [PHYSICS.md](PHYSICS.md).
 - Selecting: the player you pressed on is selected (also Q/W/E/R for players 1-4).
 - "Having the ball" is not binary: it is the amplitude of psi near the player (shown as a % label). Every action below acts on psi locally,
   so it works exactly as much as the ball is there. Several players act at once and their effects add up.
-- Stance per player (keys 1/2/3 or buttons, applies to the selected player):
-  - **Attack**: a moving attractive potential well around the player carries part of the wave along as they run, plus a gentle forward momentum push.
-  - **Defense**: a repulsive potential wall in front of the player, perpendicular to their heading. It reflects and blocks the wave; running with it pushes the wave.
-  - **Pass** and **Attack** kicks are **auto-aimed** (`autoAim` param, on by default; off = along the heading). The target is the cheapest of the opposing goal and each teammate's *predicted* position (his position plus his velocity order times the ball's travel time, estimated from kick, mass and time speed), counting only teammates who are not in Defense stance (their wall would repel the ball) and are at least 5 m closer to the goal, and with a penalty when an opposing wall stands on the line. The client draws the aim as a dotted line and a small circle.
-  - **Pass**: a strong forward momentum kick (phase ramp `exp(i k d.r)`) over a wide window just ahead of the player. No stamina: it works as long as the ball is in the window
-    (the kick moves away with the player, so a running passer only gives a short push; stand still to kick hard).
+- Stance per player (keys 1/2/3/4 or buttons, applies to the selected player). Every stance is a **catch**: an attractive potential well just ahead of the player that holds the wave there and carries it along as they run; three of them then kick what was caught.
+  - **Defense** (1): catches over a wide area in front of the player and kicks it away straight, along the heading.
+  - **Pass** (2): catches just ahead and sends the ball at medium velocity to **all** the allies at once: the caught wave becomes a superposition of one momentum component per ally, each with probability proportional to `1 + (its distance from our own goal line)`, so the allies closer to the opposing goal are more likely receivers. Targets are the allies' *predicted* positions (position plus velocity order times the ball's travel time); allies within 2 m are skipped; with nobody left the pass goes to the goal.
+  - **Shot** (3): catches just ahead and kicks at high velocity to the opposing goal centre.
+  - **Dribble** (4): catches just ahead and does not kick: it keeps the ball just ahead of the player, regrouping the wave around them.
+  - Pass and Shot are **auto-aimed** (`autoAim` param, on by default; off = along the heading). The client draws each aim as a dotted line and a small circle, fainter the less likely the receiver.
+  - No stamina: a kick works as long as the ball is in the window (the window moves with the player, so a running kicker only gives a short push; stand still to kick hard).
 
 ## Characteristic length of the ball
 `L = 1 / sum(rho_x^2)` (metres): the participation length of the ball's density summed over the pitch height, along the 100 m axis. A uniform ball gives 100 m,

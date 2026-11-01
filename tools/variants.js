@@ -54,7 +54,7 @@ function options(preset) {
   const out = {};
   out.pass = experiment(preset, (m, t) => { if (t < 0.05) stand(m, 0, 40, 25); m.setStance(0, t < 3 ? STANCE.PASS : STANCE.DEFENSE); }, 30,
     (a, b) => ({ shift: a.cx - b.cx, peak: a.peak }));
-  out.carry = experiment(preset, (m, t) => { m.setStance(0, STANCE.ATTACK); if (t < 0.05) stand(m, 0, 38, 25); m.setOrder(0, t < 10 ? 6 : 0, 0); }, 14,
+  out.carry = experiment(preset, (m, t) => { m.setStance(0, STANCE.DRIBBLE); if (t < 0.05) stand(m, 0, 38, 25); m.setOrder(0, t < 10 ? 6 : 0, 0); }, 14,
     (a, b) => ({ shift: a.cx - b.cx, peak: a.peak }));
   // viability of each style: goals for team 0 in 90 s against a parked opponent, and against the fortress bot
   const attackers = ['turns', 'receiver', 'shadow', 'relay', 'plow', 'lanes'];

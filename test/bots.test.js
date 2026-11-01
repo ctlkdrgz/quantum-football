@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Match, W, H, TEAM_SIZE } = require('../sim');
+const { Match, W, H, TEAM_SIZE, STANCE } = require('../sim');
 const { drive, STRATEGIES } = require('../bots');
 const { start, parseEnv } = require('../server');
 
@@ -17,23 +17,23 @@ test('receiver: player 0 waits next to the opposing goal, on both sides', () => 
   const m = play(['receiver', 'receiver'], 15);
   assert.ok(Math.hypot(team(m, 0)[0].x - (W - 8), team(m, 0)[0].y - H / 2) < 3);
   assert.ok(Math.hypot(team(m, 1)[0].x - 8, team(m, 1)[0].y - H / 2) < 3);
-  assert.equal(team(m, 0)[3].stance, 1, 'player 3 guards our goal');
+  assert.equal(team(m, 0)[3].stance, STANCE.DEFENSE, 'player 3 guards our goal');
 });
 
 test('fortress: all four in defense stance around their own goal', () => {
   const m = play(['fortress', 'fortress'], 15);
-  for (const p of team(m, 0)) { assert.equal(p.stance, 1); assert.ok(p.x < 14, 'x ' + p.x); }
-  for (const p of team(m, 1)) { assert.equal(p.stance, 1); assert.ok(p.x > W - 14); }
+  for (const p of team(m, 0)) { assert.equal(p.stance, STANCE.DEFENSE); assert.ok(p.x < 14, 'x ' + p.x); }
+  for (const p of team(m, 1)) { assert.equal(p.stance, STANCE.DEFENSE); assert.ok(p.x > W - 14); }
 });
 
 test('shadow: two players stay between the two most advanced opponents and their goal', () => {
   const m = play(['shadow', 'fortress'], 20); // a steady opponent, so the marks have time to settle
-  const foes = team(m, 1).slice().sort((a, b) => a.x - b.x).slice(0, 2); // team 1 attacks left: smallest x = most advanced
+  const foes = team(m, 1).map((p, n) => ({ x: p.x, y: p.y, n })).sort((a, b) => (Math.abs(a.x - b.x) > 1e-6 ? a.x - b.x : a.n - b.n)).slice(0, 2); // ties within a micrometre go by number, like the bot // team 1 attacks left: smallest x = most advanced
   const marks = team(m, 0).slice(0, 2);
-  marks.forEach((p) => assert.equal(p.stance, 1));
+  marks.forEach((p) => assert.equal(p.stance, STANCE.DEFENSE));
   for (const f of foes) assert.ok(marks.some((p) => Math.abs(p.x - (f.x - 3)) < 2 && Math.abs(p.y - f.y) < 2), 'foe at ' + f.x.toFixed(1) + ',' + f.y.toFixed(1));
   const mirror = play(['receiver', 'shadow'], 15); // same from the other side
-  assert.equal(team(mirror, 1)[0].stance, 1);
+  assert.equal(team(mirror, 1)[0].stance, STANCE.DEFENSE);
 });
 
 test('lanes: each player runs sideways inside its own quarter of the length', () => {
@@ -47,8 +47,8 @@ test('lanes: each player runs sideways inside its own quarter of the length', ()
     assert.ok(Math.abs(p.x - (W / 8 + n * W / 4)) < 3, 'lane ' + n + ' x ' + p.x);
     assert.ok(Math.max(...ys[n]) - Math.min(...ys[n]) > 15, 'sweeps sideways');
   });
-  assert.deepEqual(team(m, 0).map((p) => p.stance), [1, 1, 0, 0]); // own half defends, far half attacks
-  assert.deepEqual(team(m, 1).map((p) => p.stance), [1, 1, 0, 0]); // mirrored: player 0 starts nearest its own goal too
+  assert.deepEqual(team(m, 0).map((p) => p.stance), [0, 0, 3, 3]); // own half defends, far half dribbles
+  assert.deepEqual(team(m, 1).map((p) => p.stance), [0, 0, 3, 3]); // mirrored: player 0 starts nearest its own goal too
 });
 
 test('relay: a passer behind the ball and three stones spaced toward the goal', () => {
@@ -56,7 +56,7 @@ test('relay: a passer behind the ball and three stones spaced toward the goal', 
   const c = (q) => [q.x, q.y];
   for (const tm of [0, 1]) {
     const [pa, ...stones] = team(m, tm), d = tm === 0 ? 1 : -1;
-    stones.forEach((s) => assert.equal(s.stance, 0));
+    stones.forEach((s) => assert.equal(s.stance, STANCE.DRIBBLE));
     assert.ok(stones.every((s, n) => n === 0 || (s.x - stones[n - 1].x) * d > 3), 'stones ordered toward the goal ' + stones.map((s) => s.x.toFixed(0)));
     assert.ok((stones[0].x - pa.x) * d > 8, 'passer is behind the first stone');
     assert.ok(c(pa).every(Number.isFinite));
@@ -72,7 +72,7 @@ test('plow: four walls advance abreast toward the goal and keep 12 m behind the 
   for (const tm of [0, 1]) {
     const xs = team(m, tm).map((p) => p.x);
     assert.ok(Math.max(...xs) - Math.min(...xs) < 3, 'abreast ' + xs);
-    team(m, tm).forEach((p) => assert.equal(p.stance, 1));
+    team(m, tm).forEach((p) => assert.equal(p.stance, STANCE.DEFENSE));
   }
   assert.ok(team(m, 0)[0].y < 10 && team(m, 0)[3].y > 40, 'spread over the width');
   const mk = new Match(); mk.setPresent(0, true); mk.setPresent(1, true); mk.phase = 'playing';
@@ -135,3 +135,4 @@ test('symmetry [asymmetry fix]: every strategy except turns plays as an exact mi
     assert.ok(worst < 1e-9, s + ' ' + worst);
   }
 });
+
