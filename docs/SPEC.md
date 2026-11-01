@@ -20,7 +20,7 @@ The equations and numerics behind this are in [PHYSICS.md](PHYSICS.md).
 ## Players
 - Each side commands **four players** (team 0 blue: players 1-4, attacks right; team 1 red: attacks left). You cannot command the other side's players.
 - **Orders are destinations, given by drag and drop.** Press on one of your players, drag, release: the player runs to the drop point at the max-speed slider's speed and stops exactly there.
-  **Shift**-drop queues the point after the current path (up to 20 waypoints; the preview line starts at the end of the path). A click without drag (or a drop within 0.5 m of the start) stops the player.
+  **Shift**-drop queues the point after the current path (up to 20 waypoints; while shift is held the preview line starts at the end of the path, whose last waypoint is highlighted). A click without drag (or a drop within 0.5 m of the start) stops the player.
   The client draws each of your players' remaining path as a thin dotted line through its waypoints. Orientation = direction of travel; it stays when the player stops.
   Bots can still give raw velocity orders (`setOrder`), which cancel any path.
 - Selecting: the player you pressed on is selected (also Q/W/E/R for players 1-4).

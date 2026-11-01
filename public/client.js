@@ -122,9 +122,9 @@ addEventListener('keydown', (e) => {
   if (e.key === 'q' || e.key === 'w' || e.key === 'e' || e.key === 'r') selected = 'qwer'.indexOf(e.key);
 });
 
-let shiftDown = false;
-addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftDown = true; });
-addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftDown = false; });
+// The drag's shift state comes from the pointer events themselves (they carry it even when the page has no keyboard focus); the keys only update it between two moves.
+addEventListener('keydown', (e) => { if (e.key === 'Shift' && drag) drag.shift = true; });
+addEventListener('keyup', (e) => { if (e.key === 'Shift' && drag) drag.shift = false; });
 // Drag from one of your players and drop: it runs there at max speed and stops. Shift-drop queues the destination after the current path.
 // With shift the drag may start anywhere: away from your players it is for the selected player (a shift-click queues the clicked spot).
 // A drop within 0.5 m of the start (a plain click) stops the player; with shift, a drop within 0.5 m of the path's end changes nothing.
@@ -135,10 +135,10 @@ canvas.addEventListener('pointerdown', (e) => {
   for (let k = 0; k < grid.teamSize; k++) { const p = myPlayer(k), d = Math.hypot(p.x - c.x, p.y - c.y); if (d < bd) { bd = d; best = k; } }
   if (best < 0 && e.shiftKey) best = selected;
   if (best < 0) return;
-  selected = best; drag = { p: best }; cursor = c;
+  selected = best; drag = { p: best, shift: e.shiftKey }; cursor = c;
   canvas.setPointerCapture(e.pointerId);
 });
-canvas.addEventListener('pointermove', (e) => { if (drag) cursor = fieldPos(e); });
+canvas.addEventListener('pointermove', (e) => { if (drag) { cursor = fieldPos(e); drag.shift = e.shiftKey; } });
 canvas.addEventListener('pointerup', (e) => {
   if (!drag) return;
   const c = fieldPos(e), p = myPlayer(drag.p);
@@ -220,8 +220,9 @@ function draw() {
     ctx.fillStyle = '#fff'; ctx.font = '12px system-ui';
     ctx.fillText((k + 1) + STANCE_LETTER[p.stance] + ' ' + Math.round(state.presence[i] * 100) + '%', x - 14, y - 12);
   });
-  if (drag && cursor) { // the move being dragged: from the end of the current path (shift) or from the player
-    const p = myPlayer(drag.p), q = shiftDown && p.path.length ? p.path[p.path.length - 1] : p;
+  if (drag && cursor) { // the move being dragged: from the end of the current path (shift, that waypoint highlighted) or from the player
+    const p = myPlayer(drag.p), queued = drag.shift && p.path.length, q = queued ? p.path[p.path.length - 1] : p;
+    if (queued) { ctx.fillStyle = '#ffffff99'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q.x * s, q.y * s, 6, 0, 7); ctx.fill(); ctx.stroke(); }
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
     ctx.beginPath(); ctx.moveTo(q.x * s, q.y * s); ctx.lineTo(cursor.x * s, cursor.y * s); ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(cursor.x * s, cursor.y * s, 3, 0, 7); ctx.stroke();
