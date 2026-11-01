@@ -13,6 +13,18 @@ const { STRATEGIES } = bots;
 const PUBLIC = path.join(__dirname, 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+
+// Build stamp shown on the page: date (Europe/Paris) and short hash of the commit this server runs from, read once at start;
+// '+ local changes' when tracked files differ from that commit. Outside a git checkout: 'unknown build'.
+function buildInfo(dir = __dirname) {
+  const { execFileSync } = require('child_process');
+  const git = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, TZ: 'Europe/Paris' } }).trim();
+  try {
+    const head = git('log', '-1', '--date=format-local:%Y-%m-%d %H:%M', '--format=%cd %h');
+    return head + (git('status', '--porcelain', '--untracked-files=no') ? ' + local changes' : '');
+  } catch { return 'unknown build'; }
+}
+const BUILD = buildInfo();
 const TICK_MS = 33;
 
 function frame(opcode, payload) {
@@ -74,7 +86,7 @@ function start(port, opts = {}) {
   const broadcast = (obj) => members.forEach((c) => send(c, obj));
   const admin = () => members.values().next().value;
   const role = (c) => { const i = [...members.values()].indexOf(c); return i === 0 ? 'admin' : i === 1 ? 'human' : 'spectator'; };
-  const hello = (c) => send(c, { t: 'hello', id: c.id, name: c.name, slot: c.slot, admin: c === admin(), role: role(c), paused: match.paused, strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE, catch: CATCH }, bots: control, preset: opts.preset || 'custom' });
+  const hello = (c) => send(c, { t: 'hello', id: c.id, name: c.name, slot: c.slot, admin: c === admin(), role: role(c), paused: match.paused, strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE, catch: CATCH }, bots: control, preset: opts.preset || 'custom', build: BUILD });
   // Stable roles: a member keeps its team while that team is still a human one; vacant human teams go to the earliest members without one.
   // Members whose slot changed get a new hello (except skip, who is about to get one).
   const assign = (skip, roles = new Map()) => { // roles: each member's role before a departure, so those whose role changed hear about it too
@@ -191,7 +203,7 @@ function parseEnv(env) {
   const preset = env.PRESET || 'default';
   return { bots, preset: env.PARAMS ? preset + '+' : preset, params: { ...(PRESETS[env.PRESET] || {}), ...(env.PARAMS ? JSON.parse(env.PARAMS) : {}) } };
 }
-module.exports = { start, parseEnv };
+module.exports = { buildInfo, start, parseEnv };
 // Port busy (usually an older run of this server): stop that process if it is a node server.js, then retry.
 function killOld(port) {
   const { execSync } = require('child_process');

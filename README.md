@@ -9,7 +9,7 @@ A prototype.
 node server.js            # http://localhost:8080  (PORT=1234 to change)
 node --test 'test/*.test.js'
 ```
-Open the page in several browsers: the first connection is the **admin**, the second is the **human**, the others spectate. The match starts **paused**; the admin presses Play. Teams set to `human` go to the admin, then the human. Static files are served with `no-store`, so a refresh loads the latest app.
+Open the page in several browsers: the first connection is the **admin**, the second is the **human**, the others spectate. The match starts **paused**; the admin presses Play. Teams set to `human` go to the admin, then the human. Static files are served with `no-store`, so a refresh loads the latest app. The top band shows the build: date (Europe/Paris) and short hash of the commit the server runs from, read at server start, with "+ local changes" if tracked files were modified; restart the server after pulling to see the new one.
 
 ## Play
 You command four players. Drag from one of your players and drop: it runs there at full speed and stops (thin dotted line = its path). **Shift**-drop adds the destination after the current path, and with Shift the drag can start anywhere (away from your players it moves the selected one; a Shift-click queues the clicked spot); a click on a player stops it. Keys **1** Defense (wide catch, kicks straight ahead),

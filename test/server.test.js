@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { start } = require('../server');
+const { buildInfo, start } = require('../server');
 
 // Tests never touch a running game: every server takes an OS-chosen port (0), listens on the loopback only, and is closed
 // afterwards even when an assertion fails (an open socket would keep the test process alive).
@@ -165,4 +165,12 @@ test('static files are never cached, so a browser refresh reloads the whole app'
   const port = await boot({ bots: [null, null] });
   const res = await fetch('http://127.0.0.1:' + port + '/client.js');
   assert.equal(res.headers.get('cache-control'), 'no-store');
+});
+
+test('build stamp: the commit date and hash, sent in hello; a folder outside git gives unknown build', async () => {
+  const port = await boot({ bots: [null, null] });
+  const a = await open(port);
+  await until(() => a.hello);
+  assert.match(a.hello.build, /^\d{4}-\d\d-\d\d \d\d:\d\d [0-9a-f]{4,}( \+ local changes)?$/);
+  assert.equal(buildInfo(require('os').tmpdir()), 'unknown build');
 });
