@@ -118,7 +118,7 @@ test('a human plays the free team against a bot; both-bot matches take no player
   assert.equal(h.hello.slot, 1, 'the human gets the team the bot does not run');
   await until(() => h.last.phase === 'countdown'); // match starts at once: the bot team is already present
   h.ws.close(); s1.close(); s1.closeAllConnections();
-  const s2 = await start(0, { bots: ['lanes', 'shadow'], preset: 'default', params: {} });
+  const s2 = await start(0, { paused: false, bots: ['lanes', 'shadow'], preset: 'default', params: {} });
   const w = await open(s2.address().port);
   await until(() => w.hello);
   assert.equal(w.hello.slot, -1);
