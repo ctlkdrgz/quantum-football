@@ -211,8 +211,8 @@ function draw() {
       }
       ctx.setLineDash([]); ctx.strokeStyle = COLORS[team];
     }
-    if (mine && p.path && p.path.length) { // the planned path, thin and dotted
-      ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(x, y);
+    if (mine && p.path && p.path.length) { // the planned path, thin, dotted and white like the drag preview (the aims are in team colour)
+      ctx.strokeStyle = '#ffffffcc'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(x, y);
       for (const t of p.path) ctx.lineTo(t.x * s, t.y * s);
       ctx.stroke(); ctx.setLineDash([]);
       for (const t of p.path) { ctx.beginPath(); ctx.arc(t.x * s, t.y * s, 3, 0, 7); ctx.stroke(); }
