@@ -1,5 +1,7 @@
 # Three ways to play: default, waves, additive walls
 
+> **Stale numbers:** the tables and the bot results below were measured with the old stances (Attack, Defense as a repulsive wall, Pass) and the old velocity-drag orders. The stances are now Defense, Pass, Shot, Dribble (see SPEC.md and PHYSICS.md section 3); rerun `node tools/variants.js <preset>` before relying on them. The `wallHeight` slider now sets the depth of Defense's wide catch well.
+
 Which parameter set is the most fun to play, and which gives a human the most interesting options? This is a reasoned comparison, **not a playtest**:
 nobody has played these with a mouse. The evidence is (1) frames and videos of bot matches, (2) numbers from `node tools/variants.js [preset]`
 (bots, 120 s matches, single deterministic runs: indicative only, a small change can swing a count by a few goals).

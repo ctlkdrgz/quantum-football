@@ -12,7 +12,7 @@ node --test 'test/*.test.js'
 Open the page in two browsers: the first two connections play (blue/red), the next ones spectate.
 
 ## Play
-You command four players. Drag from one of your players: the drag is its velocity vector (a click stops it). Keys **1** Defense (wide catch, kicks straight ahead),
+You command four players. Drag from one of your players and drop: it runs there at full speed and stops (thin dotted line = its path). **Shift**-drop adds the destination after the current path; a click stops it. Keys **1** Defense (wide catch, kicks straight ahead),
 **2** Pass (catches just ahead, medium kick split among the allies, the more advanced the likelier), **3** Shot (catches just ahead, hard kick at the opposing goal),
 **4** Dribble (catches just ahead and keeps the ball there) set the selected player's stance; **Q/W/E/R** select players 1-4.
 Sliders on the right change the physics for both players.
@@ -35,9 +35,9 @@ The first browser to connect is the admin: a band at the top of the page lets it
 | `turns` | The teams take turns (12 s): the attacker puts two passers behind the ball, the other team defends in a wall line |
 | `receiver` | Player 1 waits next to the opposing goal as a target man; players 2-3 stand behind the ball and pass to him; player 4 guards our goal |
 | `fortress` | All four in defense stance around our own goal, facing the ball, to deflect everything |
-| `shadow` | Players 1-2 each stand between one of the two most advanced opponents and our goal (wall on); players 3-4 attack with passes |
+| `shadow` | Players 1-2 each stand between one of the two most advanced opponents and our goal (defense stance); players 3-4 attack with passes |
 | `lanes` | All four run sideways, each in its own quarter of the pitch length; the two nearest our goal defend, the other two attack |
-| `relay` | A bucket brigade: player 1 passes from behind the ball; players 2-4 stand as attack-stance stepping stones every 12 m toward the goal |
-| `plow` | All four form a wall line across the pitch and advance abreast, 12 m behind the ball, pushing the wave toward the goal like a piston |
+| `relay` | A bucket brigade: player 1 passes from behind the ball; players 2-4 stand as dribble-stance stepping stones every 12 m toward the goal |
+| `plow` | All four form a line of defenders across the pitch and advance abreast, 12 m behind the ball, clearing the wave toward the goal |
 
 Example: `BOTS=shadow,- node server.js` and play red against the shadow bot.

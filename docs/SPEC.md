@@ -19,9 +19,10 @@ The equations and numerics behind this are in [PHYSICS.md](PHYSICS.md).
 
 ## Players
 - Each side commands **four players** (team 0 blue: players 1-4, attacks right; team 1 red: attacks left). You cannot command the other side's players.
-- **Orders are velocity vectors, given by drag and drop.** Press on one of your players, drag, release: the drag vector is the player's velocity
-  (1 m of drag = 1 m/s, capped at the max-speed slider). The player keeps that velocity until a wall stops it or you give a new order.
-  A click without drag (or a drag under 0.5 m) stops it. Orientation = direction of the last order; it stays when the player stops.
+- **Orders are destinations, given by drag and drop.** Press on one of your players, drag, release: the player runs to the drop point at the max-speed slider's speed and stops exactly there.
+  **Shift**-drop queues the point after the current path (up to 20 waypoints; the preview line starts at the end of the path). A click without drag (or a drop within 0.5 m of the start) stops the player.
+  The client draws each of your players' remaining path as a thin dotted line through its waypoints. Orientation = direction of travel; it stays when the player stops.
+  Bots can still give raw velocity orders (`setOrder`), which cancel any path.
 - Selecting: the player you pressed on is selected (also Q/W/E/R for players 1-4).
 - "Having the ball" is not binary: it is the amplitude of psi near the player (shown as a % label). Every action below acts on psi locally,
   so it works exactly as much as the ball is there. Several players act at once and their effects add up.
@@ -48,11 +49,11 @@ Presets (`PRESETS` in `sim.js`): `default`, `waves`, `additive`, `waves-kick`, `
 
 ## Parameters (sliders, shared by both players, clamped on the server)
 Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal height, goal threshold, match duration,
-player max speed, player reach, attack well depth, defense wall height, kick strength. Ranges and defaults: `PARAMS` in `sim.js`.
+player max speed, player reach, catch well depth (Pass/Shot/Dribble), Defense well depth, kick strength. Ranges and defaults: `PARAMS` in `sim.js`.
 
 ## Architecture
 - `sim.js`: pure simulation (no I/O), unit-tested. `server.js`: static files + dependency-free WebSocket, 30 Hz tick, server-authoritative.
-- `public/`: canvas client. Sends orders (`{t:'order',p,vx,vy}`), stances (`{t:'stance',p,s}`, p = 0-3 within your team) and slider changes. Receives the density as 5000 bytes (base64) + all 8 players + score each tick.
+- `public/`: canvas client. Sends moves (`{t:'move',p,x,y,queue}`; `queue` appends to the path) and, for compatibility, velocity orders (`{t:'order',p,vx,vy}`), stances (`{t:'stance',p,s}`, p = 0-3 within your team) and slider changes. Receives the density as 5000 bytes (base64) + all 8 players + score each tick.
 - No npm dependencies. Node 22.
 
 ## Known rough edges / ideas
