@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Match, W, H, TEAM_SIZE, STANCE } = require('../sim');
 const { drive, STRATEGIES } = require('../bots');
-const { start, parseEnv } = require('../server');
+const { parseEnv } = require('../server');
 
 function play(names, secs) {
   const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing';
@@ -103,27 +103,6 @@ test('random: orders change over time and stay valid', () => {
   const m = play(['random', 'random'], 10);
   assert.ok(m.R.every(Number.isFinite));
   assert.ok(m.players.some((p) => p.vx || p.vy));
-});
-
-test('a human plays the free team against a bot; both-bot matches take no players', async () => {
-  const open = (port) => new Promise((resolve) => {
-    const ws = new WebSocket('ws://localhost:' + port + '/ws'); const c = { ws, hello: null, last: null };
-    ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.t === 'hello') c.hello = m; if (m.t === 'state') c.last = m; };
-    ws.onopen = () => resolve(c);
-  });
-  const until = async (f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise((r) => setTimeout(r, 30)); assert.ok(f()); };
-  const s1 = await start(0, { bots: ['fortress', null] });
-  const h = await open(s1.address().port);
-  await until(() => h.hello && h.last);
-  assert.equal(h.hello.slot, 1, 'the human gets the team the bot does not run');
-  await until(() => h.last.phase === 'countdown'); // match starts at once: the bot team is already present
-  h.ws.close(); s1.close(); s1.closeAllConnections();
-  const s2 = await start(0, { bots: ['lanes', 'shadow'], preset: 'default', params: {} });
-  const w = await open(s2.address().port);
-  await until(() => w.hello);
-  assert.equal(w.hello.slot, -1);
-  await until(() => w.last && w.last.phase === 'playing' && w.last.params === undefined);
-  w.ws.close(); s2.close(); s2.closeAllConnections();
 });
 
 test('symmetry [asymmetry fix]: every strategy except turns plays as an exact mirror image of itself', () => {

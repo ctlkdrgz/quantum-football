@@ -3,28 +3,37 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { start } = require('../server');
 
-const open = (port) => new Promise((resolve) => {
-  const ws = new WebSocket('ws://localhost:' + port + '/ws');
-  const c = { ws, hello: null, last: null };
-  ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.t === 'hello') c.hello = m; if (m.t === 'state') c.last = m; };
-  ws.onopen = () => resolve(c);
+// Tests never touch a running game: every server takes an OS-chosen port (0), listens on the loopback only, and is closed
+// afterwards even when an assertion fails (an open socket would keep the test process alive).
+const servers = [], sockets = [];
+test.afterEach(() => { for (const w of sockets.splice(0)) w.close(); for (const s of servers.splice(0)) { s.close(); s.closeAllConnections(); } });
+const boot = async (opts) => { const s = await start(0, { host: '127.0.0.1', graceMs: 150, ...opts }); servers.push(s); return s.address().port; };
+const open = (port, id = '') => new Promise((resolve) => {
+  const ws = new WebSocket('ws://127.0.0.1:' + port + '/ws?id=' + id);
+  const c = { ws, hello: null, last: null, hellos: 0, reloads: 0 };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'hello') { c.hello = m; c.hellos++; } else if (m.t === 'state') c.last = m; else if (m.t === 'reload') c.reloads++;
+  };
+  ws.onopen = () => { sockets.push(ws); resolve(c); };
 });
 const until = async (f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise((r) => setTimeout(r, 30)); assert.ok(f()); };
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('first two browsers play, the third spectates, and a free slot is reused', async () => {
-  const server = await start(0, { bots: [null, null] });
-  const port = server.address().port;
+  const port = await boot({ bots: [null, null] });
   const a = await open(port), b = await open(port), c = await open(port);
   await until(() => a.hello && b.hello && c.hello);
   assert.deepEqual([a.hello.slot, b.hello.slot, c.hello.slot], [0, 1, -1]);
+  assert.deepEqual([a.hello.name, b.hello.name, c.hello.name], ['Client 1', 'Client 2', 'Client 3'], 'join order defines the names');
   await until(() => a.last && a.last.phase === 'countdown');
 
   c.ws.send(JSON.stringify({ t: 'param', k: 'mass', v: 3 })); // spectators cannot change anything
   a.ws.send(JSON.stringify({ t: 'param', k: 'mass', v: 2 }));
   await until(() => a.last && a.last.t === 'state');
-  const res = await fetch('http://localhost:' + port + '/');
+  const res = await fetch('http://127.0.0.1:' + port + '/');
   assert.equal(res.status, 200);
-  assert.equal((await fetch('http://localhost:' + port + '/..%2Fserver.js')).status, 404);
+  assert.equal((await fetch('http://127.0.0.1:' + port + '/..%2Fserver.js')).status, 404);
 
   a.ws.send(JSON.stringify({ t: 'order', p: 2, vx: 6, vy: 0 }));
   b.ws.send(JSON.stringify({ t: 'order', p: 9, vx: 6, vy: 0 })); // out of range: ignored
@@ -32,15 +41,14 @@ test('first two browsers play, the third spectates, and a free slot is reused', 
   await until(() => a.last.players[2].vx > 0 && a.last.players[5].stance === 2); // a commands 0-3, b commands 4-7
   assert.equal(a.last.players.filter((p) => p.vx > 0).length, 1);
 
-  a.ws.close(); // player 0 leaves: spectator takes the slot
+  a.ws.close(); // player 0 leaves for good: the spectator takes that slot, and the other player is not moved
   await until(() => c.hello.slot === 0);
-  [b, c].forEach((x) => x.ws.close());
-  server.close(); server.closeAllConnections();
+  assert.equal(b.hello.slot, 1);
+  assert.deepEqual([b.hello.slot, b.hello.admin, b.hellos], [1, true, 2], 'b keeps its team and, as the earliest left, inherits the admin role (second hello)');
 });
 
-test('the first client is admin and chooses who controls each team', async () => {
-  const server = await start(0);
-  const port = server.address().port;
+test('the first client is admin and chooses who controls each team, live', async () => {
+  const port = await boot({ bots: ['random', 'random'] });
   const a = await open(port), b = await open(port);
   await until(() => a.hello && b.hello);
   assert.deepEqual([a.hello.bots, a.hello.admin, b.hello.admin, a.hello.slot, b.hello.slot], [['random', 'random'], true, false, -1, -1]);
@@ -50,8 +58,62 @@ test('the first client is admin and chooses who controls each team', async () =>
   a.ws.send(JSON.stringify({ t: 'control', team: 0, who: 'human' }));
   await until(() => a.hello.slot === 0);
   assert.deepEqual([a.hello.bots, b.hello.slot], [[null, 'random'], -1]);
-  a.ws.close(); // the admin leaves: b becomes admin and takes the human team
+  a.ws.close(); // the admin leaves for good: b becomes admin and takes the human team
   await until(() => b.hello.admin && b.hello.slot === 0);
+});
+
+test('a non-admin who reloads gets the old name and role back; nobody else is moved', async () => {
+  const port = await boot({ bots: [null, null] });
+  const a = await open(port), b = await open(port), c = await open(port);
+  await until(() => a.hello && b.hello && c.hello);
+  b.ws.close(); // b reloads: same token, a moment later (within the grace period)
+  await pause(30);
+  const b2 = await open(port, b.hello.id);
+  await until(() => b2.hello);
+  assert.deepEqual([b2.hello.name, b2.hello.slot, b2.hello.admin], ['Client 2', 1, false]);
+  await pause(250); // the grace period passes: the spectator must not have taken b's team
+  assert.deepEqual([a.hello.slot, c.hello.slot, a.hellos, c.hellos, a.reloads, c.reloads], [0, -1, 1, 1, 0, 0]);
+  assert.equal(b2.hello.id, b.hello.id);
+});
+
+test('when the admin reloads they keep name, role and admin right; everybody else is told to refresh', async () => {
+  const port = await boot({ bots: [null, null] });
+  const a = await open(port), b = await open(port), c = await open(port);
+  await until(() => a.hello && b.hello && c.hello);
+  a.ws.close();
+  await pause(30);
+  const a2 = await open(port, a.hello.id);
+  await until(() => a2.hello && b.reloads && c.reloads);
+  assert.deepEqual([a2.hello.name, a2.hello.slot, a2.hello.admin], ['Client 1', 0, true]);
+  assert.deepEqual([b.reloads, c.reloads, a2.reloads], [1, 1, 0]);
+  // the others come back with their tokens and find their roles unchanged
+  const b2 = await open(port, b.hello.id), c2 = await open(port, c.hello.id);
+  await until(() => b2.hello && c2.hello);
+  assert.deepEqual([b2.hello.name, b2.hello.slot, b2.hello.admin, c2.hello.name, c2.hello.slot], ['Client 2', 1, false, 'Client 3', -1]);
+  await pause(250);
+  assert.equal(a2.hello.admin, true);
+});
+
+test('a client that stays away longer than the grace period loses its role to the next in line', async () => {
+  const port = await boot({ bots: [null, null] });
+  const a = await open(port), b = await open(port), c = await open(port);
+  await until(() => a.hello && b.hello && c.hello);
   b.ws.close();
-  server.close(); server.closeAllConnections();
+  await until(() => c.hello.slot === 1);
+  const b2 = await open(port, b.hello.id); // too late: a new member with a new name
+  await until(() => b2.hello);
+  assert.deepEqual([b2.hello.slot, b2.hello.name], [-1, 'Client 4']);
+});
+
+test('a human plays the free team against a bot; both-bot matches take no players', async () => {
+  const p1 = await boot({ bots: ['fortress', null] });
+  const h = await open(p1);
+  await until(() => h.hello && h.last);
+  assert.equal(h.hello.slot, 1, 'the human gets the team the bot does not run');
+  await until(() => h.last.phase === 'countdown'); // match starts at once: the bot team is already present
+  const p2 = await boot({ bots: ['lanes', 'shadow'], preset: 'default', params: {} });
+  const w = await open(p2);
+  await until(() => w.hello);
+  assert.equal(w.hello.slot, -1);
+  await until(() => w.last && w.last.phase === 'playing' && w.last.params === undefined);
 });

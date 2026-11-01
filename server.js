@@ -1,6 +1,6 @@
 'use strict';
 // Quantum Football server: static files + a tiny dependency-free WebSocket endpoint (/ws).
-// One match only. The first two connections are players 0 and 1; later ones are spectators.
+// One match only. Clients are members in join order (identified by a token that survives a page reload); the admin decides who controls each team.
 const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -52,20 +52,35 @@ function start(port, opts = {}) {
   const control = (opts.bots || ['random', 'random']).slice(0, 2);
   for (const [k, val] of Object.entries(opts.params || {})) match.setParam(k, val);
   match.kickoff(); // some parameters (packet width, wall mode) take effect at kick-off
-  const clients = new Set(); // { sock, slot }, in connection order; the first one is the admin
+  // Members are clients identified by a token (?id=) that the page keeps across reloads, in join order: the order gives the name
+  // ("Client 3") and decides the admin (the earliest) and who gets a free human team. A member whose socket closed stays as a ghost
+  // for graceMs and keeps its role, so a reload gives the same name, slot and admin right back.
+  const GRACE_MS = opts.graceMs === undefined ? 15000 : opts.graceMs;
+  const members = new Map(); // id -> { id, name, sock | null, slot, timer }
+  let joined = 0;
 
-  const send = (c, obj) => { if (!c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
-  const broadcast = (obj) => clients.forEach((c) => send(c, obj));
-  const admin = () => clients.values().next().value;
-  const hello = (c) => send(c, { t: 'hello', slot: c.slot, admin: c === admin(), strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: control, preset: opts.preset || 'custom' });
-  // Teams controlled by a human go to the earliest connections; everyone else spectates. Clients whose slot changed get a new hello.
-  const assign = () => {
+  const send = (c, obj) => { if (c.sock && !c.sock.destroyed) c.sock.write(frame(1, Buffer.from(JSON.stringify(obj)))); };
+  const broadcast = (obj) => members.forEach((c) => send(c, obj));
+  const admin = () => members.values().next().value;
+  const hello = (c) => send(c, { t: 'hello', id: c.id, name: c.name, slot: c.slot, admin: c === admin(), strategies: Object.keys(STRATEGIES), defs: PARAMS, params: match.params, grid: { W, H, goalDepth: GOAL_DEPTH, teamSize: TEAM_SIZE }, bots: control, preset: opts.preset || 'custom' });
+  // Stable roles: a member keeps its team while that team is still a human one; vacant human teams go to the earliest members without one.
+  // Members whose slot changed get a new hello (except skip, who is about to get one).
+  const assign = (skip) => {
     const free = [0, 1].filter((t) => !control[t]);
-    const before = new Map([...clients].map((c) => [c, c.slot]));
-    let i = 0;
-    for (const c of clients) c.slot = i < free.length ? free[i++] : -1;
-    for (let t = 0; t < 2; t++) match.setPresent(t, !control[t] ? [...clients].some((c) => c.slot === t) : true);
-    for (const c of clients) if (c.slot !== before.get(c) || !before.has(c)) hello(c);
+    const before = new Map([...members.values()].map((c) => [c, c.slot]));
+    const taken = new Set();
+    for (const c of members.values()) { if (free.includes(c.slot) && !taken.has(c.slot)) taken.add(c.slot); else c.slot = -1; }
+    const vacant = free.filter((t) => !taken.has(t));
+    for (const c of members.values()) if (c.slot < 0 && vacant.length) c.slot = vacant.shift();
+    for (let t = 0; t < 2; t++) match.setPresent(t, !control[t] ? [...members.values()].some((c) => c.slot === t) : true);
+    for (const c of members.values()) if (c !== skip && c.slot !== before.get(c)) hello(c);
+  };
+  const forget = (c) => { // the grace period is over: the next in line inherits the team, or the admin role
+    if (members.get(c.id) !== c || c.sock) return;
+    const was = admin();
+    members.delete(c.id);
+    assign();
+    if (admin() && admin() !== was) hello(admin());
   };
 
   const server = http.createServer((req, res) => {
@@ -79,15 +94,27 @@ function start(port, opts = {}) {
   });
 
   server.on('upgrade', (req, sock) => {
+    const url = new URL(req.url, 'http://localhost');
     const key = req.headers['sec-websocket-key'];
-    if (req.url !== '/ws' || !key) { sock.destroy(); return; }
+    if (url.pathname !== '/ws' || !key) { sock.destroy(); return; }
     sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
       'Sec-WebSocket-Accept: ' + crypto.createHash('sha1').update(key + GUID).digest('base64') + '\r\n\r\n');
     sock.setNoDelay(true);
-    const c = { sock, slot: -1 };
-    clients.add(c);
-    assign();
-    hello(c);
+    const wanted = url.searchParams.get('id');
+    let c = /^[\w-]{1,64}$/.test(wanted || '') ? members.get(wanted) : null;
+    if (c) { // a reload or a reconnect: same name, same role
+      clearTimeout(c.timer);
+      if (c.sock) c.sock.destroy(); // the old page's socket may not have been noticed as closed yet
+      c.sock = sock;
+      if (c === admin()) members.forEach((o) => { if (o !== c) send(o, { t: 'reload' }); }); // the admin reloaded: everybody else refreshes
+      hello(c);
+    } else {
+      const id = wanted && /^[\w-]{1,64}$/.test(wanted) && !members.has(wanted) ? wanted : crypto.randomUUID();
+      c = { id, name: 'Client ' + ++joined, sock, slot: -1, timer: null };
+      members.set(id, c);
+      assign(c);
+      hello(c);
+    }
 
     sock.on('data', makeParser(sock, (text) => {
       let m;
@@ -107,7 +134,12 @@ function start(port, opts = {}) {
       else if (m.t === 'stance' && mine >= 0) match.setStance(mine, m.s);
       else if (m.t === 'param' && match.setParam(m.k, m.v)) broadcast({ t: 'params', params: match.params });
     }));
-    const drop = () => { if (clients.delete(c)) { assign(); if (admin()) hello(admin()); } }; // the next in line inherits the team, or the admin role
+    const drop = () => {
+      if (c.sock !== sock) return;
+      c.sock = null;
+      c.timer = setTimeout(() => forget(c), GRACE_MS);
+      c.timer.unref();
+    };
     sock.on('close', drop);
     sock.on('error', drop);
   });
@@ -118,14 +150,14 @@ function start(port, opts = {}) {
     if (control[0] || control[1]) bots.drive(match, control);
     match.step(Math.min(0.1, (now - last) / 1000));
     last = now;
-    if (!clients.size) return;
+    if (![...members.values()].some((c) => c.sock)) return;
     const s = match.snapshot();
     s.t = 'state';
     s.dens = Buffer.from(s.dens).toString('base64');
     broadcast(s);
   }, TICK_MS);
-  server.on('close', () => clearInterval(timer));
-  return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, () => { server.off('error', reject); resolve(server); }); });
+  server.on('close', () => { clearInterval(timer); members.forEach((c) => clearTimeout(c.timer)); });
+  return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, opts.host, () => { server.off('error', reject); resolve(server); }); });
 }
 
 // BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks the starting strategies: random turns receiver fortress shadow lanes relay plow (default random,random).

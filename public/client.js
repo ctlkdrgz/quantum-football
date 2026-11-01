@@ -5,7 +5,7 @@ const msg = document.getElementById('msg');
 const COLORS = ['#4da3ff', '#ff6b5e'];
 const STANCE_NAMES = ['Defense', 'Pass', 'Shot', 'Dribble'];
 let slot = -1, grid = { W: 100, H: 50, goalDepth: 6 }, params = {}, defs = {}, state = null;
-let admin = false, strategies = [], preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while a move is being dragged
+let myName = '', admin = false, strategies = [], preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while a move is being dragged
 const sliders = {};
 
 const off = document.createElement('canvas');
@@ -24,16 +24,19 @@ const ramp = new Uint8ClampedArray(256 * 3);
   }
 })();
 
-const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+// The id (kept per tab across reloads) gives this page its name and role back after a refresh.
+const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?id=' + encodeURIComponent(sessionStorage.getItem('qfId') || ''));
 const sendJSON = (o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 ws.onclose = () => { msg.textContent = 'disconnected'; };
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
+  if (m.t === 'reload') { location.reload(); return; } // the admin refreshed: everybody follows
   if (m.t === 'hello') {
+    sessionStorage.setItem('qfId', m.id); myName = m.name;
     slot = m.slot; admin = m.admin; strategies = m.strategies; grid = m.grid; bots = m.bots; preset = m.preset; defs = m.defs; params = m.params;
     off.width = grid.W; off.height = grid.H; offCtx = off.getContext('2d'); img = offCtx.createImageData(grid.W, grid.H);
     buildSliders();
-    document.title = slot >= 0 ? 'Quantum Football — you are ' + (slot ? 'red' : 'blue') : 'Quantum Football — spectating';
+    document.title = 'Quantum Football — ' + myName + (slot >= 0 ? ', ' + (slot ? 'red' : 'blue') : ', spectating');
     buildBand();
   } else if (m.t === 'control') { bots = m.bots; buildBand(); }
   else if (m.t === 'params') { params = m.params; syncSliders(); }
@@ -60,7 +63,7 @@ function buildBand() {
   });
   const note = document.createElement('span');
   note.style.color = 'var(--dim)';
-  note.textContent = admin ? 'you are the admin; "human" teams go to the earliest connections' : 'only the admin changes this';
+  note.textContent = admin ? myName + ', admin: "human" teams go to the earliest clients' : myName + ', only the admin changes this';
   body.append(note);
 }
 

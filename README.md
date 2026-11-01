@@ -25,8 +25,11 @@ interfering. Comparison, with videos' numbers and a recommendation: [docs/VARIAN
 
 ## Bots
 `BOTS=<team 0>,<team 1> node server.js` sets the starting controller of each team; `-` leaves a team to a human. Default: `random,random`.
-The first browser to connect is the admin: a band at the top of the page lets it change, live, who controls each team (`human` or any script below).
-`human` teams go to the earliest connections (admin first), the rest spectate; if the admin leaves, the next connection becomes admin.
+Clients are named by join order (Client 1, Client 2, ...). The first is the admin: a band at the top of the page lets it change, live, who controls each team (`human` or any script below).
+`human` teams go to the earliest clients without one, the rest spectate; a client keeps its team until it leaves or the admin turns that team into a script.
+Each tab keeps an id across reloads (sessionStorage): a client that reloads gets its name and role back (the server holds them 15 s); if the admin reloads, all other clients are told to refresh too.
+A client gone for more than 15 s is forgotten: the next in line inherits its team, or the admin role.
+Tests (`test/*.test.js`) start their own servers on a random loopback port, so they never touch a game you have running.
 `random` (new): every player picks a random velocity and stance every 0.5-2 s.
 `DEMO=1` is the same as `BOTS=turns,turns`. Strategies (`bots.js`):
 

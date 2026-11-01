@@ -5,7 +5,7 @@ The equations and numerics behind this are in [PHYSICS.md](PHYSICS.md).
 
 ## Match
 - One server. The first two browsers to connect are player 0 (blue, attacks the right goal) and player 1 (red, attacks the left goal).
-  Later connections are spectators (they see everything, change nothing). If a player leaves, the match resets and the first spectator takes the slot.
+  Later connections are spectators (they see everything, change nothing). A player who leaves (and does not come back within the 15 s reload grace) gives the slot to the first spectator; the other player keeps theirs.
 - Flow: waiting for 2 players -> 3 s countdown -> play (match duration) -> full time (10 s, wave keeps moving) -> new match, score 0-0.
 - Goal: when the probability of the ball inside a goal rectangle (6 m deep, goal-height tall, centred on the end wall) exceeds the
   threshold, the *opposing* player scores. 2.5 s pause, then the ball is reset as a still Gaussian packet at the centre and the players go back to their halves.
