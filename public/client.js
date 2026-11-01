@@ -5,7 +5,7 @@ const msg = document.getElementById('msg');
 const COLORS = ['#4da3ff', '#ff6b5e'];
 const STANCE_NAMES = ['Defense', 'Pass', 'Shot', 'Dribble'];
 let slot = -1, grid = { W: 100, H: 50, goalDepth: 6 }, params = {}, defs = {}, state = null;
-let admin = false, strategies = [], preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while an order is being dragged
+let admin = false, strategies = [], preset = '', bots = [null, null], cursor = null, drag = null, selected = 0; // drag: {p} while a move is being dragged
 const sliders = {};
 
 const off = document.createElement('canvas');
@@ -107,7 +107,11 @@ addEventListener('keydown', (e) => {
   if (e.key === 'q' || e.key === 'w' || e.key === 'e' || e.key === 'r') selected = 'qwer'.indexOf(e.key);
 });
 
-// Drag from one of your players to give it a velocity vector (1 m of drag = 1 m/s). A click without drag stops it.
+let shiftDown = false;
+addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftDown = true; });
+addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftDown = false; });
+// Drag from one of your players and drop: it runs there at max speed and stops. Shift-drop queues the destination after the current path.
+// A drop within 0.5 m of the start (a plain click) stops the player; with shift it changes nothing.
 canvas.addEventListener('pointerdown', (e) => {
   if (slot < 0 || !state) return;
   const c = fieldPos(e);
@@ -121,7 +125,9 @@ canvas.addEventListener('pointermove', (e) => { if (drag) cursor = fieldPos(e); 
 canvas.addEventListener('pointerup', (e) => {
   if (!drag) return;
   const c = fieldPos(e), p = myPlayer(drag.p);
-  sendJSON({ t: 'order', p: drag.p, vx: c.x - p.x, vy: c.y - p.y });
+  if (e.shiftKey) sendJSON({ t: 'move', p: drag.p, x: c.x, y: c.y, queue: true });
+  else if (Math.hypot(c.x - p.x, c.y - p.y) < 0.5) sendJSON({ t: 'move', p: drag.p, x: p.x, y: p.y }); // click: stop
+  else sendJSON({ t: 'move', p: drag.p, x: c.x, y: c.y });
   drag = null;
 });
 
@@ -163,9 +169,6 @@ function draw() {
     ctx.fillRect(side === 0 ? goalDepth * s + 4 : cw - goalDepth * s - 12, gy + gh * s - bh, 8, bh);
   }
 
-  const arrow = (x, y, dx, dy) => { // dx, dy in metres, drawn 1:1
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dx * s, y + dy * s); ctx.stroke();
-  };
   state.players.forEach((p, i) => {
     const team = i < grid.teamSize ? 0 : 1, mine = team === slot, k = i % grid.teamSize;
     const x = p.x * s, y = p.y * s, r = params.reach * s, a = Math.atan2(p.hy, p.hx);
@@ -186,14 +189,20 @@ function draw() {
       }
       ctx.setLineDash([]); ctx.strokeStyle = COLORS[team];
     }
-    if (p.vx || p.vy) { ctx.lineWidth = 1.5; arrow(x, y, p.vx, p.vy); } // current velocity order
+    if (mine && p.path && p.path.length) { // the planned path, thin and dotted
+      ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.beginPath(); ctx.moveTo(x, y);
+      for (const t of p.path) ctx.lineTo(t.x * s, t.y * s);
+      ctx.stroke(); ctx.setLineDash([]);
+      for (const t of p.path) { ctx.beginPath(); ctx.arc(t.x * s, t.y * s, 3, 0, 7); ctx.stroke(); }
+    }
     ctx.fillStyle = '#fff'; ctx.font = '12px system-ui';
     ctx.fillText((k + 1) + STANCE_LETTER[p.stance] + ' ' + Math.round(state.presence[i] * 100) + '%', x - 14, y - 12);
   });
-  if (drag && cursor) { // the order being dragged
-    const p = myPlayer(drag.p);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
-    arrow(p.x * s, p.y * s, cursor.x - p.x, cursor.y - p.y); ctx.setLineDash([]);
+  if (drag && cursor) { // the move being dragged: from the end of the current path (shift) or from the player
+    const p = myPlayer(drag.p), q = shiftDown && p.path.length ? p.path[p.path.length - 1] : p;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.moveTo(q.x * s, q.y * s); ctx.lineTo(cursor.x * s, cursor.y * s); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(cursor.x * s, cursor.y * s, 3, 0, 7); ctx.stroke();
   }
   if (slot >= 0 && myPlayer(selected)) {
     document.querySelectorAll('#stances button').forEach((b) => b.classList.toggle('on', Number(b.dataset.s) === myPlayer(selected).stance));

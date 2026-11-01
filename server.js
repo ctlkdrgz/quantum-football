@@ -103,6 +103,7 @@ function start(port, opts = {}) {
       if (c.slot < 0) return; // spectators only watch
       const mine = Number.isInteger(m.p) && m.p >= 0 && m.p < TEAM_SIZE ? c.slot * TEAM_SIZE + m.p : -1; // you only command your own four
       if (m.t === 'order' && mine >= 0) match.setOrder(mine, m.vx, m.vy);
+      else if (m.t === 'move' && mine >= 0) match.moveTo(mine, m.x, m.y, !!m.queue);
       else if (m.t === 'stance' && mine >= 0) match.setStance(mine, m.s);
       else if (m.t === 'param' && match.setParam(m.k, m.v)) broadcast({ t: 'params', params: match.params });
     }));

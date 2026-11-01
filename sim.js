@@ -74,7 +74,7 @@ class Match {
     this.present = [false, false];
     this.score = [0, 0];
     // players 0-3 are team 0 (attack right), 4-7 team 1 (attack left). v = velocity order (m/s), h = heading.
-    this.players = Array.from({ length: NP }, (_, i) => ({ x: 0, y: H / 2, vx: 0, vy: 0, hx: i < TEAM_SIZE ? 1 : -1, hy: 0, stance: STANCE.DRIBBLE }));
+    this.players = Array.from({ length: NP }, (_, i) => ({ x: 0, y: H / 2, vx: 0, vy: 0, hx: i < TEAM_SIZE ? 1 : -1, hy: 0, stance: STANCE.DRIBBLE, path: [] }));
     this.phase = 'waiting';
     this.timer = 0;
     this.remaining = this.params.matchSeconds;
@@ -115,10 +115,23 @@ class Match {
   setOrder(i, vx, vy) {
     if (!Number.isFinite(vx) || !Number.isFinite(vy)) return;
     const p = this.players[i], len = Math.hypot(vx, vy);
+    p.path = [];
     if (len < 0.5) { p.vx = p.vy = 0; return; }
     const sp = Math.min(len, this.params.runSpeed);
     p.vx = vx / len * sp; p.vy = vy / len * sp;
     p.hx = vx / len; p.hy = vy / len;
+  }
+
+  // Move order: go to (x, y) at max speed and stop there. With `queue`, append it to the player's path instead of replacing the path.
+  // A target within 0.5 m of where the path would start is a "stop" (an empty path when not queued).
+  moveTo(i, x, y, queue = false) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const p = this.players[i], t = { x: clamp(x, 0, W), y: clamp(y, 0, H) };
+    const from = queue && p.path.length ? p.path[p.path.length - 1] : p;
+    if (!queue) { p.path = []; p.vx = p.vy = 0; }
+    if (Math.hypot(t.x - from.x, t.y - from.y) < 0.5) return;
+    if (p.path.length >= 20) return;
+    p.path.push(t);
   }
 
   face(i, dx, dy) {
@@ -142,7 +155,7 @@ class Match {
     this.players.forEach((p, i) => {
       const [fx, fy] = slots[i % TEAM_SIZE], t = i < TEAM_SIZE ? 0 : 1;
       p.x = (t === 0 ? fx : 1 - fx) * W; p.y = fy * H;
-      p.vx = p.vy = 0; p.hx = t === 0 ? 1 : -1; p.hy = 0;
+      p.vx = p.vy = 0; p.hx = t === 0 ? 1 : -1; p.hy = 0; p.path = [];
     });
     if (!!this.params.additive !== this.add) this.setGrid(!!this.params.additive);
     const { gw, gh } = this, s = this.params.packetWidth;
@@ -252,6 +265,16 @@ class Match {
   movePlayers(dt) {
     const max = this.params.runSpeed;
     for (const p of this.players) {
+      if (p.path.length) { // walking a path: full speed toward the next waypoint, landing exactly on it
+        let left = dt;
+        while (left > 1e-12 && p.path.length) {
+          const t = p.path[0], d = Math.hypot(t.x - p.x, t.y - p.y), step = max * left;
+          p.hx = d > 0 ? (t.x - p.x) / d : p.hx; p.hy = d > 0 ? (t.y - p.y) / d : p.hy;
+          if (d <= step) { p.x = t.x; p.y = t.y; left -= d / max; p.path.shift(); } else { p.x += p.hx * step; p.y += p.hy * step; left = 0; }
+        }
+        if (p.path.length) { const t = p.path[0], d = Math.hypot(t.x - p.x, t.y - p.y) || 1; p.vx = (t.x - p.x) / d * max; p.vy = (t.y - p.y) / d * max; } else p.vx = p.vy = 0;
+        continue;
+      }
       const sp = Math.hypot(p.vx, p.vy);
       if (sp > max) { p.vx *= max / sp; p.vy *= max / sp; }
       p.x += p.vx * dt; p.y += p.vy * dt;
@@ -441,7 +464,7 @@ class Match {
       phase: this.phase, timer: this.timer, remaining: this.remaining,
       score: this.score.slice(), lastScorer: this.lastScorer, present: this.present.slice(),
       goalP: this.goalP.slice(), peak: max, presence, length: this.characteristicLength(), waves: this.wavesAcrossWidth(),
-      players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance, aim: p.aim || null })),
+      players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance, aim: p.aim || null, path: p.path })),
       dens,
     };
   }

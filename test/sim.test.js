@@ -104,6 +104,23 @@ test('orders are velocity vectors, capped at max speed, stopped by walls; short 
   m.face(0, 0, 5); assert.deepEqual([m.players[0].hx, m.players[0].hy], [0, 1]);
 });
 
+test('move orders: run to the spot at max speed and stop; queued waypoints follow in order; a velocity order cancels the path', () => {
+  const m = playing(); quiet(m); m.setParam('runSpeed', 10);
+  Object.assign(m.players[0], { x: 10, y: 10 });
+  m.moveTo(0, 30, 10); run(m, 1);
+  assert.ok(Math.abs(m.players[0].x - 20) < 0.01 && m.players[0].vx === 10, 'full speed ' + m.players[0].x);
+  run(m, 1.5);
+  assert.deepEqual([m.players[0].x, m.players[0].y, m.players[0].vx, m.players[0].vy, m.players[0].path.length], [30, 10, 0, 0, 0], 'stops exactly there');
+  m.moveTo(0, 40, 10); m.moveTo(0, 40, 30, true); m.moveTo(0, 40, 30.1, true); // the last one is within 0.5 m of the previous end: ignored
+  assert.equal(m.players[0].path.length, 2);
+  run(m, 1.5); assert.ok(m.players[0].x === 40 && m.players[0].y > 10 && m.players[0].y < 16, 'turned toward the second waypoint ' + m.players[0].y);
+  assert.deepEqual([m.players[0].hx, m.players[0].hy], [0, 1], 'heading follows the move');
+  run(m, 3); assert.deepEqual([m.players[0].x, m.players[0].y, m.players[0].path.length], [40, 30, 0]);
+  m.moveTo(0, 5, 5); m.moveTo(0, 5, 5.2); m.setOrder(0, 3, 0); assert.equal(m.players[0].path.length, 0);
+  m.moveTo(0, -50, 999); assert.deepEqual(m.players[0].path, [{ x: 0, y: H }], 'clamped to the pitch');
+  Object.assign(m.players[0], { x: 40, y: 30 }); m.moveTo(0, 40, 30.2); assert.equal(m.players[0].path.length, 0, 'moving to where it already is is a stop');
+});
+
 test('each team has four players, mirrored at kick-off', () => {
   const m = playing();
   assert.equal(m.players.length, 8);
