@@ -12,7 +12,7 @@ node --test 'test/*.test.js'
 Open the page in several browsers: the first connection is the **admin**, the second is the **human**, the others spectate. The match starts **paused**; the admin presses Play. Teams set to `human` go to the admin, then the human. Static files are served with `no-store`, so a refresh loads the latest app.
 
 ## Play
-You command four players. Drag from one of your players and drop: it runs there at full speed and stops (thin dotted line = its path). **Shift**-drop adds the destination after the current path; a click stops it. Keys **1** Defense (wide catch, kicks straight ahead),
+You command four players. Drag from one of your players and drop: it runs there at full speed and stops (thin dotted line = its path). **Shift**-drop adds the destination after the current path, and with Shift the drag can start anywhere (away from your players it moves the selected one; a Shift-click queues the clicked spot); a click on a player stops it. Keys **1** Defense (wide catch, kicks straight ahead),
 **2** Pass (catches just ahead, medium kick split among the allies, the more advanced the likelier), **3** Shot (catches just ahead, hard kick at the opposing goal),
 **4** Dribble (catches just ahead and keeps the ball there) set the selected player's stance; **Q/W/E/R** select players 1-4.
 The shaded disc ahead of each player is its catch zone, where the catch well pulls the ball: the circle is the well's width (1 sigma) around its centre, solid for Defense (wide, farther ahead), dashed for the other stances.

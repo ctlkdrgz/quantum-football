@@ -125,12 +125,14 @@ let shiftDown = false;
 addEventListener('keydown', (e) => { if (e.key === 'Shift') shiftDown = true; });
 addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftDown = false; });
 // Drag from one of your players and drop: it runs there at max speed and stops. Shift-drop queues the destination after the current path.
-// A drop within 0.5 m of the start (a plain click) stops the player; with shift it changes nothing.
+// With shift the drag may start anywhere: away from your players it is for the selected player (a shift-click queues the clicked spot).
+// A drop within 0.5 m of the start (a plain click) stops the player; with shift, a drop within 0.5 m of the path's end changes nothing.
 canvas.addEventListener('pointerdown', (e) => {
   if (slot < 0 || !state) return;
   const c = fieldPos(e);
   let best = -1, bd = 4; // pick radius, metres
   for (let k = 0; k < grid.teamSize; k++) { const p = myPlayer(k), d = Math.hypot(p.x - c.x, p.y - c.y); if (d < bd) { bd = d; best = k; } }
+  if (best < 0 && e.shiftKey) best = selected;
   if (best < 0) return;
   selected = best; drag = { p: best }; cursor = c;
   canvas.setPointerCapture(e.pointerId);
