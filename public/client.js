@@ -39,7 +39,7 @@ ws.onmessage = (e) => {
     document.title = role + (slot >= 0 ? ', ' + (slot ? 'red' : 'blue') : '') + ' — Quantum Football (' + myName + ')'; // the role first: tab titles get cut
     buildBand();
     buildPause();
-    document.getElementById('build').textContent = 'build ' + m.build;
+    document.getElementById('build').textContent = m.build ? 'build ' + m.build : 'build unknown: the server predates the build stamp, restart it'; // static files are fresh on every refresh, the server code only on restart
   } else if (m.t === 'paused') { paused = m.paused; buildPause(); }
   else if (m.t === 'control') { bots = m.bots; buildBand(); }
   else if (m.t === 'params') { params = m.params; syncSliders(); }
