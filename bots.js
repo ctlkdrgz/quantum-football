@@ -82,7 +82,7 @@ function wallLine(m, k, c, depth) { // four defenders in a line in front of our 
 const STRATEGIES = {
   turns(m, t, c) {
     const k = ctx(t);
-    if (Math.floor(m.remaining / 12) % 2 !== t) { wallLine(m, k, c, 18); return; }
+    if ((Math.floor(m.clock / 12) + 1) % 2 !== t) { wallLine(m, k, c, 18); return; }
     passers(m, k, [0, 1], c, W - k.own, H / 2);
     [2, 3].forEach((n) => { m.setStance(k.base + n, DRIBBLE); goTo(m, k.base + n, c.x - k.d * 12, c.y + (n === 2 ? -8 : 8), k.d, 0); });
   },

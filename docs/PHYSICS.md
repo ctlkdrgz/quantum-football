@@ -75,7 +75,7 @@ Wall caveat: the smoothing treats out-of-range neighbours the same as the Hamilt
 
 4.4 **Renormalisation (`normalize`).** Every tick psi is rescaled so `sum |psi|^2 = 1`. This is how the diffusion's loss, and the leapfrog's small norm drift, are hidden. The consequence is a game rule: probability never runs out, the ball always exists somewhere with total weight 1. Note that renormalising after absorbing diffusion makes the effective dynamics nonlinear (a mild global gain), which is fine for a game but means psi is not a linear-quantum object.
 
-4.5 **Phases outside play.** In `goal` and `over` the wave keeps evolving (`evolve` is still called) while players are frozen in place; `buildPotential` still runs, so their wells and kicks keep acting from the frozen stances. In `waiting` and `countdown` psi is frozen.
+4.5 **Phases outside play.** In `goal` the wave keeps evolving (`evolve` is still called) while players are frozen in place; `buildPotential` still runs, so their wells and kicks keep acting from the frozen stances. In `waiting` and `countdown` psi is frozen.
 
 ## 5. Goals and measurements
 
@@ -117,7 +117,6 @@ Wall caveat: the smoothing treats out-of-range neighbours the same as the Hamilt
 | `kick` | 2 | all phase kicks | impulse per real second times the stance gain: Defense `0.7`, Pass `0.5`, Shot `1.0`, Dribble `0`. Beyond about 1.5 rad/cell of accumulated momentum a harder kick no longer gives more speed (lattice group velocity peaks at `k = pi/2`) |
 | `autoAim` | 1 | `aims` | 0 = along heading |
 | `additive` | 0 | `setGrid`, `density` | 0 Dirichlet, 1 mirrored torus (next kick-off) |
-| `matchSeconds` | 180 | match clock | not physics |
 
 ## 8. How to verify the physics
 

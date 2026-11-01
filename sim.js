@@ -16,7 +16,6 @@ const TEAM_SIZE = 4;
 const NP = 2 * TEAM_SIZE;
 const COUNTDOWN_S = 3;
 const GOAL_PAUSE_S = 2.5;
-const OVER_PAUSE_S = 10;
 // Every stance is a catch well (a moving attractive Gaussian ahead of the player) plus, except Dribble, a kick of the caught wave.
 const STANCE = { DEFENSE: 0, PASS: 1, SHOT: 2, DRIBBLE: 3 };
 // The kick window is wider than the catch well: kappa*g(r)*d.r has a reversed momentum in its tails (|d.r| > sigma), so a narrow window would kick the caught wave unevenly.
@@ -34,7 +33,6 @@ const PARAMS = {
   packetWidth: { min: 1,    max: 20,   def: 4,    step: 0.5,  label: 'Ball size at kick-off: packet width (m)', tip: 'Width (standard deviation, metres) of the ball placed at the centre at each kick-off. Changes take effect at the next kick-off (at once while waiting or counting down).' },
   goalHeight:  { min: 6,    max: 40,   def: 20,   step: 1,    label: 'Goal height (m)', tip: 'Width of the goal mouth along the end wall (metres). The goal zone is that width times 6 m deep.' },
   threshold:   { min: 0.05, max: 0.9,  def: 0.1,  step: 0.01, label: 'Goal threshold (probability)', tip: 'A goal is scored when the probability inside a goal zone reaches this value (shown by the bar next to each goal).' },
-  matchSeconds:{ min: 30,   max: 600,  def: 180,  step: 10,   label: 'Match duration (s)', tip: 'Length of a match, in real seconds.' },
   runSpeed:    { min: 2,    max: 30,   def: 12,   step: 0.5,  label: 'Player max speed (m/s)', tip: 'Top speed of every player (metres per real second). Does not touch the ball physics.' },
   reach:       { min: 1.5,  max: 12,   def: 8,    step: 0.1,  label: 'Player reach (m)', tip: "SIZE and DISTANCE of every player's effect on the ball, in metres (the scale of the shaded catch zone). The catch well sits 0.8 x reach ahead of the player with width 0.8 x reach (Defense: 1.2 x reach ahead, width 1.5 x reach); kicks act over that zone too. Bigger reach = catches from farther, over a wider area. It says WHERE a player acts, not HOW STRONGLY: that is the well depth." },
   wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Pass/Shot/Dribble: catch well depth', tip: 'STRENGTH of the catch well for Pass, Shot and Dribble: how deep the attractive dip ahead of the player is. Deeper = holds the ball tighter, drags it along better and compresses it; 0 = no catching at all (kicks still act). It says HOW STRONGLY a player holds, not WHERE: that is the reach.' },
@@ -80,7 +78,7 @@ class Match {
     this.players = Array.from({ length: NP }, (_, i) => ({ x: 0, y: H / 2, vx: 0, vy: 0, hx: i < TEAM_SIZE ? 1 : -1, hy: 0, stance: STANCE.DRIBBLE, path: [] }));
     this.phase = 'waiting';
     this.timer = 0;
-    this.remaining = this.params.matchSeconds;
+    this.clock = 0; // seconds of play since the match started (a match never ends)
     this.lastScorer = -1;
     this.goalP = [0, 0];
     this.kickoff();
@@ -90,7 +88,6 @@ class Match {
     const d = PARAMS[k];
     if (!d || typeof v !== 'number' || !Number.isFinite(v)) return false;
     this.params[k] = k === 'additive' || k === 'autoAim' ? Math.round(clamp(v, 0, 1)) : clamp(v, d.min, d.max);
-    if (k === 'matchSeconds' && this.phase !== 'playing') this.remaining = this.params.matchSeconds;
     if (k === 'packetWidth' && (this.phase === 'waiting' || this.phase === 'countdown')) this.kickoff(); // the ball on the spot follows the slider
     return true;
   }
@@ -102,14 +99,14 @@ class Match {
     } else {
       this.phase = 'waiting';
       this.score = [0, 0];
-      this.remaining = this.params.matchSeconds;
+      this.clock = 0;
       this.kickoff();
     }
   }
 
   restart() {
     this.score = [0, 0];
-    this.remaining = this.params.matchSeconds;
+    this.clock = 0;
     this.kickoff();
     this.phase = 'countdown';
     this.timer = COUNTDOWN_S;
@@ -244,27 +241,18 @@ class Match {
       return;
     }
     if (ph === 'playing') {
-      this.remaining -= dt;
+      this.clock += dt;
       this.movePlayers(dt);
       this.evolve(dt);
       this.checkGoals();
-      if (this.phase === 'playing' && this.remaining <= 0) {
-        this.remaining = 0;
-        this.phase = 'over';
-        this.timer = OVER_PAUSE_S;
-      }
       return;
     }
-    this.evolve(dt); // 'goal' and 'over': the wave keeps moving, players are frozen
+    this.evolve(dt); // 'goal': the wave keeps moving, players are frozen
     this.timer -= dt;
     if (this.timer > 0) return;
-    if (ph === 'goal') {
-      this.kickoff();
-      this.phase = 'countdown';
-      this.timer = COUNTDOWN_S;
-    } else {
-      this.restart();
-    }
+    this.kickoff();
+    this.phase = 'countdown';
+    this.timer = COUNTDOWN_S;
   }
 
   movePlayers(dt) {
@@ -466,7 +454,7 @@ class Match {
       return s;
     });
     return {
-      paused: this.paused, phase: this.phase, timer: this.timer, remaining: this.remaining,
+      paused: this.paused, phase: this.phase, timer: this.timer, clock: this.clock,
       score: this.score.slice(), lastScorer: this.lastScorer, present: this.present.slice(),
       goalP: this.goalP.slice(), peak: max, presence, length: this.characteristicLength(), waves: this.wavesAcrossWidth(),
       players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance, aim: p.aim || null, path: p.path })),
