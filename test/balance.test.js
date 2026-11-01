@@ -7,7 +7,7 @@ const { drive, STRATEGIES } = require('../bots');
 
 // Balance of a bot against itself: full 90 s match, score difference and the time-averaged share of the wave in team 0's half.
 function selfMatch(s) {
-  const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.setParam('matchSeconds', 90); m.restart(); m.phase = 'playing';
+  const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.setParam('matchSeconds', 90); m.setParam('packetWidth', 14); m.restart(); // the bots were tuned on the old wide ball (default is 4 now) m.phase = 'playing';
   let left = 0, n = 0, k = 0;
   for (; m.phase !== 'over' && k < 30 * 600; k++) {
     drive(m, [s, s]); m.step(1 / 30);

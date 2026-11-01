@@ -5,7 +5,7 @@
 
 **TL/DR**
 - The ball is a complex field psi(x, y) on a 100 x 50 grid (1 cell = 1 m), evolving under the free Schroedinger equation with hbar = 1 and mass `mass`. Nothing else is simulated: no ball position, no ball velocity.
-- Players never touch the ball; they edit psi locally: a potential V (wells attract, walls repel) and phase ramps (momentum kicks). A goal is a probability threshold, not an event.
+- Players never touch the ball; they edit psi locally: a potential V (attractive catch wells) and phase ramps (momentum kicks). A goal is a probability threshold, not an event.
 - Numerics: Visscher leapfrog (norm-preserving to second order), a per-tick diffusion filter ("attenuation") and a per-tick renormalisation. The last two are not Hamiltonian physics; they are game-design stabilisers.
 - Two wall modes: Dirichlet (coherent, interference) or a mirrored torus with summed densities (additive, no cancellation).
 
@@ -19,7 +19,7 @@ Companion docs: mechanics and controls in [SPEC.md](SPEC.md), the "ball length" 
 
 1.3 **Units.** hbar = 1, lengths in metres, "game time" in game-seconds. Real time reaches the wave through `gdt = dt * timeScale` (default 5, range 0.5 to 12). The players' motion and the countdowns run on real time; only psi runs on game time. So `timeScale` is the ratio of ball speed to player speed.
 
-1.4 **Initial condition (`kickoff`).** A real Gaussian packet centred on the pitch, psi proportional to `exp(-r^2 / (4 s^2))` with `s = packetWidth` (default 14), so the density |psi|^2 is proportional to `exp(-r^2 / (2 s^2))`: standard deviation `s` in each axis. Phases are all zero, so the mean momentum is zero: the ball starts "still" and spreads. Then normalised.
+1.4 **Initial condition (`kickoff`).** A real Gaussian packet centred on the pitch, psi proportional to `exp(-r^2 / (4 s^2))` with `s = packetWidth` (default 4, slider 1-20; changing it while the game is waiting or counting down re-does the kick-off), so the density |psi|^2 is proportional to `exp(-r^2 / (2 s^2))`: standard deviation `s` in each axis. Phases are all zero, so the mean momentum is zero: the ball starts "still" and spreads. Then normalised.
 
 ## 2. The free dynamics
 
@@ -27,9 +27,9 @@ Companion docs: mechanics and controls in [SPEC.md](SPEC.md), the "ball length" 
 
 2.2 **Lattice Laplacian.** `applyH` uses the 5-point stencil with spacing 1 m: `H psi = -(1/2m)(sum of 4 neighbours - 4 psi) + V psi`. Consequence: the lattice dispersion is `omega(k) = (1/m)(2 - cos kx - cos ky) + V`, which equals the continuum `k^2/(2m)` only for wavelengths well above a few cells. Waves with `k` near pi (2-cell wavelength) have zero group velocity. Kicks and wells are tuned to stay far below that.
 
-2.3 **Group velocity.** A packet with wavenumber `k` (rad/m) moves at `k/m` m per game-second, i.e. `k * timeScale / m` m per real second. This is the formula `aim()` uses to predict pass travel time (with `k = 0.7 * kick`, clamped to 2 to 30 m/s).
+2.3 **Group velocity.** A packet with wavenumber `k` (rad/m) moves at `k/m` m per game-second, i.e. `k * timeScale / m` m per real second. This is the formula `aims()` uses to predict pass travel time (with `k = 0.5 * kick`, the Pass gain, clamped to 2 to 30 m/s).
 
-2.4 **Spreading.** A free packet of initial width `s` widens as `sqrt(s^2 + (t/(2 m s))^2)` in game time. With the defaults (s = 14, m = 0.7) the ball is far wider than a player's reach within a few real seconds, which is why the kick-off packet width and `L` (PLOT-ENGINE) are tuned together.
+2.4 **Spreading.** A free packet of initial width `s` widens as `sqrt(s^2 + (t/(2 m s))^2)` in game time. With the defaults (s = 4, m = 0.7) the ball is far wider than a player's reach within a few real seconds, which is why the kick-off packet width and `L` (PLOT-ENGINE) are tuned together.
 
 2.5 **Walls, coherent mode (`additive = 0`).** Out-of-range neighbours are 0 (`neighbours()`), i.e. psi = 0 one cell beyond each edge: Dirichlet, hard reflecting walls. The incident and reflected waves interfere in the amplitude: standing-wave nodes, and the lowest pitch mode has half a wave across the length (`wavesAcrossWidth() = 0.5`). Eigenmodes are `sin(n pi x / W) sin(m pi y / H)` (up to the half-cell offset).
 
@@ -40,26 +40,28 @@ Note that this is a variant physics, not a different integration of the same phy
 
 All effects are rebuilt every tick in `buildPotential(dtReal)`: `V` is zeroed, then each player contributes by stance. Phase kicks are applied directly to psi at that moment; potentials persist for the tick's evolution. Contributions of several players add. "Having the ball" is therefore never a flag: it is how much amplitude lies where the player's effect acts (the `presence` % in the HUD is `sum rho * Gaussian(reach)` around the player in `snapshot()`).
 
-3.1 **Common geometry.** `sigma = 0.6 * reach` (reach default 8 m, so sigma = 4.8 m). Windows are truncated at 4 sigma and cover exactly the cells whose centre is within the radius (`forBox`); this exactness is what keeps left/right mirrors identical (ASYMMETRY.md, cause 1).
+3.1 **Common geometry.** Every length scales with `reach` (default 8 m): the catch well `sigma` is `0.8 reach` (Pass, Shot, Dribble) or `1.5 reach` (Defense), see the table in 3.4. Windows are truncated at 4 sigma and cover exactly the cells whose centre is within the radius (`forBox`); this exactness is what keeps left/right mirrors identical (ASYMMETRY.md, cause 1).
 
 3.2 **Phase kick (`kickPhase`).** psi is multiplied by `exp(i kappa g(r) d.r)` with `g = exp(-|r|^2 / (2 sigma_k^2))` and `d` the unit aim direction. Near the window centre this adds momentum `kappa * d` to the wave, weighted by the existing amplitude: where there is no ball, nothing happens. Because `g` is not constant, the edge of the window also gets a small radial momentum change; the kick is a local, smooth impulse rather than an exact boost. `kappa = c * kick * dtReal`, so the impulse is **per real second** and independent of the tick rate; `c` is the stance's kick gain (3.4).
 
-3.3 **Aims (`aims`).** Returns the kick directions of a player as a list of `{dx, dy, tx, ty, w}` (unit direction, target point, probability weight, weights sum to 1). Dribble: none. Defense: the heading. Shot: the opposing goal centre. Pass: every ally, at its predicted position (travel time = distance / (0.4 * kick * timeScale / mass), clamped to 4 s, extrapolated along its velocity order), with weight proportional to `1 + |x_ally - x_ownGoal|`, so allies nearer the opposing goal are likelier; allies within 2 m are skipped, and with none left the pass goes to the goal. With `autoAim = 0`, Pass and Shot are one direction along the heading.
+3.3 **Aims (`aims`).** Returns the kick directions of a player as a list of `{dx, dy, tx, ty, w}` (unit direction, target point, probability weight, weights sum to 1). Dribble: none. Defense: the heading. Shot: the opposing goal centre. Pass: every ally, at its predicted position (travel time = distance / (0.5 * kick * timeScale / mass), clamped to 4 s, extrapolated along its velocity order), with weight proportional to `1 + |x_ally - x_ownGoal|`, so allies nearer the opposing goal are likelier; allies within 2 m are skipped, and with none left the pass goes to the goal. With `autoAim = 0`, Pass and Shot are one direction along the heading.
 
 3.4 **Catch and kick (all stances).** Each tick a player contributes (a) a catch well `V -= depth * exp(-r^2 / (2 sigma^2))` centred `off` ahead of the player along the heading, and (b) a phase kick over the same window with `kappa = gain * kick * dtReal` along the aims. Because the well moves with the player, it drags probability along (adiabatic-ish transport, imperfect: the wave can leak and spreads); deep wells compress the ball (see PLOT-ENGINE), shallow ones leak.
 
 | Stance | Well centre `off` | Well and kick `sigma` | Depth | Kick gain | Direction |
 |---|---|---|---|---|---|
-| Defense | `reach` | `reach` (wide) | `wallHeight` (default 1) | 0.7 | heading |
-| Pass | `0.6 reach` | `0.6 reach` | `wellDepth` (0.5) | 0.4 (medium) | all allies, weighted |
-| Shot | `0.6 reach` | `0.6 reach` | `wellDepth` | 1.0 (high) | opposing goal |
-| Dribble | `0.6 reach` | `0.6 reach` | `wellDepth` | 0 | none |
+| Defense | `1.2 reach` | `1.5 reach` (wide) | `wallHeight` (default 1) | 0.7 | heading |
+| Pass | `0.8 reach` | `0.8 reach` | `wellDepth` (0.5) | 0.5 (medium) | all allies, weighted |
+| Shot | `0.8 reach` | `0.8 reach` | `wellDepth` | 1.0 (high) | opposing goal |
+| Dribble | `0.8 reach` | `0.8 reach` | `wellDepth` | 0 | none |
 
-3.5 **Several directions (`kickPhase`).** For a Pass the window factor is `(1 - g) + g * sum_j a_j exp(i kappa g d_j.r)` with `a_j = sqrt(w_j)`: each ally's direction gets a momentum component with probability `w_j` (the `(1 - g)` term keeps the window edge continuous; psi is renormalised after the tick anyway). With one direction it reduces to the plain phase kick of 3.2. In additive mode every mirror image of the player kicks along the mirrored directions.
+The kick window is wider than the well: `KICK_WIDTH = 2` times `sigma` (the phase `kappa g(r) d.r` has reversed momentum in the tails of a narrow window). `PULSE_S = 0.4` s is the period of a Pass split (3.5).
+
+3.5 **Several directions (`kickPhase`).** For a Pass to several allies the window factor is `(1 - g) + g * conj(c0) * sum_j a_j exp(i (ph_j + kappa g d_j.r))` with `a_j = sqrt(w_j)`: each ally's direction gets a momentum component with probability `w_j` (the `(1 - g)` term keeps the window edge continuous). The offsets `ph_j` (largest component 0, the others a common angle, sign alternating from pulse to pulse) are chosen so that `|c0| = |sum a_j exp(i ph_j)| = 1`; dividing by `c0` makes the factor exactly 1 at the window centre, so the split does not bump the density there. A split is a finite event, not a force (applied every tick it would only average the directions and, being non-unitary, pump up the window), so a Pass fires it in pulses every `PULSE_S` with `kappa = gain * kick * PULSE_S`. The factors of different players multiply pointwise and commute, which keeps mirrored teams mirror images. With one direction it reduces to the plain phase kick of 3.2. In additive mode every mirror image kicks along the mirrored directions.
 
 3.6 **No walls any more.** The old repulsive Defense barrier and the Attack stance are gone: Defense is now a wide catch plus a straight clearance, and Dribble replaces Attack's carrying well without the push.
 
-3.7 **Players themselves** are classical points: velocity orders capped at `runSpeed` (default 12 m/s), clamped to the pitch (a wall zeroes that velocity component), integrated with `x += v dt` (`movePlayers`). No collisions between players, and no effect of the ball on the players.
+3.7 **Players themselves** are classical points. A move order (`moveTo`) gives a path of up to 20 waypoints; `movePlayers` walks it at `runSpeed` (default 12 m/s), landing exactly on each waypoint within the tick, turning the heading toward the next one and stopping at the last. `vx, vy` are then set to the current travel velocity (used by the Pass prediction). Bots may instead give a raw velocity order (`setOrder`, which clears the path): capped at `runSpeed`, clamped to the pitch (a wall zeroes that velocity component), integrated with `x += v dt`. No collisions between players, and no effect of the ball on the players.
 
 ## 4. The integrator
 
@@ -73,7 +75,7 @@ Wall caveat: the smoothing treats out-of-range neighbours the same as the Hamilt
 
 4.4 **Renormalisation (`normalize`).** Every tick psi is rescaled so `sum |psi|^2 = 1`. This is how the diffusion's loss, and the leapfrog's small norm drift, are hidden. The consequence is a game rule: probability never runs out, the ball always exists somewhere with total weight 1. Note that renormalising after absorbing diffusion makes the effective dynamics nonlinear (a mild global gain), which is fine for a game but means psi is not a linear-quantum object.
 
-4.5 **Phases outside play.** In `goal` and `over` the wave keeps evolving (`evolve` is still called) while players are frozen in place; `buildPotential` still runs, so their wells, walls and kicks keep acting from the frozen stances. In `waiting` and `countdown` psi is frozen.
+4.5 **Phases outside play.** In `goal` and `over` the wave keeps evolving (`evolve` is still called) while players are frozen in place; `buildPotential` still runs, so their wells and kicks keep acting from the frozen stances. In `waiting` and `countdown` psi is frozen.
 
 ## 5. Goals and measurements
 
@@ -89,7 +91,7 @@ Wall caveat: the smoothing treats out-of-range neighbours the same as the Hamilt
 
 ## 6. Where the model is not really physics (critical notes)
 
-6.1 **Player influence is a design choice, not a force law.** Wells and walls are potentials, kicks are phase multiplications; nothing conserves energy. A kick adds energy at will, and the attenuation removes it. That is intentional but means energy-based reasoning (tunnelling thresholds, bound states) only holds over short windows.
+6.1 **Player influence is a design choice, not a force law.** Wells are potentials, kicks are phase multiplications; nothing conserves energy. A kick adds energy at will, and the attenuation removes it. That is intentional but means energy-based reasoning (tunnelling thresholds, bound states) only holds over short windows.
 
 6.2 **Smoothing and renormalisation dominate at the playing parameters.** The attenuation and the 5-point lattice change the effective dispersion noticeably for short waves, and the `waves` presets are essentially a diffusive regime with residual wave character. Anything derived from textbook free-particle formulas (2.3, 2.4) is an order-of-magnitude guide.
 
@@ -106,19 +108,19 @@ Wall caveat: the smoothing treats out-of-range neighbours the same as the Hamilt
 | `timeScale` | 5 | `gdt = dt * timeScale` | wave clock vs. player clock; ball speed in m/s real = `k * timeScale / m` |
 | `mass` | 0.7 | kinetic coefficient `1/(2m)` | inertia: heavier = slower spreading, slower after a kick |
 | `attenuation` | 0.05 | `smooth` | diffusion coefficient `attenuation / 2` per game-s; kills short waves |
-| `packetWidth` | 14 | `kickoff` | initial std of the density (m) |
+| `packetWidth` | 4 | `kickoff` | initial std of the density (m) |
 | `goalHeight`, `threshold` | 20, 0.1 | `goalProbabilities`, `checkGoals` | size of the goal window; probability needed to score |
 | `runSpeed` | 12 | `setOrder`, `movePlayers` | player speed (m/s, real time) |
 | `reach` | 8 | well offset and size | spatial scale of every player effect |
 | `wellDepth` | 0.5 | Pass/Shot/Dribble catch well | trap depth (energy units, hbar = 1) |
 | `wallHeight` | 1 | Defense catch well | depth of the wide well (name kept from the old barrier) |
-| `kick` | 2 | all phase kicks | impulse per real second times the stance gain: Defense `0.7`, Pass `0.4`, Shot `1.0`, Dribble `0` |
+| `kick` | 2 | all phase kicks | impulse per real second times the stance gain: Defense `0.7`, Pass `0.5`, Shot `1.0`, Dribble `0`. Beyond about 1.5 rad/cell of accumulated momentum a harder kick no longer gives more speed (lattice group velocity peaks at `k = pi/2`) |
 | `autoAim` | 1 | `aims` | 0 = along heading |
 | `additive` | 0 | `setGrid`, `density` | 0 Dirichlet, 1 mirrored torus (next kick-off) |
 | `matchSeconds` | 180 | match clock | not physics |
 
 ## 8. How to verify the physics
 
-- Unit tests: `node --test 'test/sim.test.js'` (total probability stays 1, wall reflection, eigenmode stays stationary, additive-wall conservation, goal rules, aim, mirror symmetry).
+- Unit tests: `node --test 'test/sim.test.js'` (total probability stays 1, wall reflection, eigenmode stays stationary, additive-wall conservation, goal rules, aim, mirror symmetry, stances and pass split, move orders).
 - Mirror error of the dynamics: `node tools/symmetry.js` (should stay at about 1e-14).
 - Preset statistics (L, waves, goals): `node tools/variants.js`.

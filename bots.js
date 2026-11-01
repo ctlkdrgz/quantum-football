@@ -6,7 +6,7 @@
 //   shadow    two players mark the two most advanced opponents; the other two attack with passes
 //   lanes     the four players run sideways, each in its own quarter of the pitch length (two defend, two attack)
 //   relay     a bucket brigade: player 0 passes from behind the ball, players 1-3 stand as stepping stones on the way to the goal, in dribble stance
-//   plow      the four players form a wall line (defense stance) and advance together, pushing the wave in front of them toward the goal
+//   plow      the four players form a line of defenders and advance together, clearing the wave in front of them toward the goal
 //   random    every player picks a random velocity and stance every 0.5-2 s (not mirror-symmetric, by design)
 const { W, H, N, TEAM_SIZE, STANCE } = require('./sim');
 const { DEFENSE, PASS, DRIBBLE } = STANCE;

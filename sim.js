@@ -29,7 +29,7 @@ const PARAMS = {
   timeScale:   { min: 0.5,  max: 12,   def: 5,    step: 0.1,  label: 'Wave time speed' },
   mass:        { min: 0.5,  max: 4,    def: 0.7,  step: 0.05, label: 'Ball weight (mass)' },
   attenuation: { min: 0,    max: 1,    def: 0.05, step: 0.01, label: 'Attenuation (smoothing)' },
-  packetWidth: { min: 2,    max: 20,   def: 14,   step: 0.5,  label: 'Kick-off packet width (m)' },
+  packetWidth: { min: 1,    max: 20,   def: 4,    step: 0.5,  label: 'Ball size at kick-off: packet width (m)' },
   goalHeight:  { min: 6,    max: 40,   def: 20,   step: 1,    label: 'Goal height (m)' },
   threshold:   { min: 0.05, max: 0.9,  def: 0.1,  step: 0.01, label: 'Goal threshold (probability)' },
   matchSeconds:{ min: 30,   max: 600,  def: 180,  step: 10,   label: 'Match duration (s)' },
@@ -72,6 +72,7 @@ class Match {
     this.D = new Float64Array(N); // density on the pitch (folded in additive mode)
     this.setGrid(false);
     this.present = [false, false];
+    this.paused = false; // a paused match does not step at all (the server pauses it until the admin starts it)
     this.score = [0, 0];
     // players 0-3 are team 0 (attack right), 4-7 team 1 (attack left). v = velocity order (m/s), h = heading.
     this.players = Array.from({ length: NP }, (_, i) => ({ x: 0, y: H / 2, vx: 0, vy: 0, hx: i < TEAM_SIZE ? 1 : -1, hy: 0, stance: STANCE.DRIBBLE, path: [] }));
@@ -88,6 +89,7 @@ class Match {
     if (!d || typeof v !== 'number' || !Number.isFinite(v)) return false;
     this.params[k] = k === 'additive' || k === 'autoAim' ? Math.round(clamp(v, 0, 1)) : clamp(v, d.min, d.max);
     if (k === 'matchSeconds' && this.phase !== 'playing') this.remaining = this.params.matchSeconds;
+    if (k === 'packetWidth' && (this.phase === 'waiting' || this.phase === 'countdown')) this.kickoff(); // the ball on the spot follows the slider
     return true;
   }
 
@@ -231,6 +233,7 @@ class Match {
   }
 
   step(dt) {
+    if (this.paused) return;
     const ph = this.phase;
     if (ph === 'waiting') return;
     if (ph === 'countdown') {
@@ -461,7 +464,7 @@ class Match {
       return s;
     });
     return {
-      phase: this.phase, timer: this.timer, remaining: this.remaining,
+      paused: this.paused, phase: this.phase, timer: this.timer, remaining: this.remaining,
       score: this.score.slice(), lastScorer: this.lastScorer, present: this.present.slice(),
       goalP: this.goalP.slice(), peak: max, presence, length: this.characteristicLength(), waves: this.wavesAcrossWidth(),
       players: this.players.map((p) => ({ x: p.x, y: p.y, hx: p.hx, hy: p.hy, vx: p.vx, vy: p.vy, stance: p.stance, aim: p.aim || null, path: p.path })),

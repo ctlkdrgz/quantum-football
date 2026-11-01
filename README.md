@@ -9,13 +9,13 @@ A prototype.
 node server.js            # http://localhost:8080  (PORT=1234 to change)
 node --test 'test/*.test.js'
 ```
-Open the page in two browsers: the first two connections play (blue/red), the next ones spectate.
+Open the page in several browsers: the first connection is the **admin**, the second is the **human**, the others spectate. The match starts **paused**; the admin presses Play. Teams set to `human` go to the admin, then the human. Static files are served with `no-store`, so a refresh loads the latest app.
 
 ## Play
-You command four players. Drag from one of your players: the drag is its velocity vector (a click stops it). Keys **1** Defense (wide catch, kicks straight ahead),
+You command four players. Drag from one of your players and drop: it runs there at full speed and stops (thin dotted line = its path). **Shift**-drop adds the destination after the current path; a click stops it. Keys **1** Defense (wide catch, kicks straight ahead),
 **2** Pass (catches just ahead, medium kick split among the allies, the more advanced the likelier), **3** Shot (catches just ahead, hard kick at the opposing goal),
 **4** Dribble (catches just ahead and keeps the ball there) set the selected player's stance; **Q/W/E/R** select players 1-4.
-Sliders on the right change the physics for both players.
+Sliders on the right change the physics live (admin and human only); the ball size slider ("packet width", default 4 m) resizes the ball before kick-off.
 
 Docs: [docs/PHYSICS.md](docs/PHYSICS.md) (the physics: equation, discretisation, player forces, goals; kept in sync with `sim.js`), [docs/SPEC.md](docs/SPEC.md) (mechanics), [docs/ASYMMETRY.md](docs/ASYMMETRY.md) (left/right fairness: what was wrong and how it is checked), [docs/RESEARCH.md](docs/RESEARCH.md) (Egan's original and what is borrowed), [docs/PLOT-ENGINE.md](docs/PLOT-ENGINE.md) (the ball's characteristic length as a story and pacing device).
 
@@ -26,7 +26,7 @@ interfering. Comparison, with videos' numbers and a recommendation: [docs/VARIAN
 ## Bots
 `BOTS=<team 0>,<team 1> node server.js` sets the starting controller of each team; `-` leaves a team to a human. Default: `random,random`.
 Clients are named by join order (Client 1, Client 2, ...). The first is the admin: a band at the top of the page lets it change, live, who controls each team (`human` or any script below).
-`human` teams go to the earliest clients without one, the rest spectate; a client keeps its team until it leaves or the admin turns that team into a script.
+`human` teams go to the admin, then the second client ("human" role) if it has none; later clients only spectate. A client keeps its team until it leaves or the admin turns that team into a script.
 Each tab keeps an id across reloads (sessionStorage): a client that reloads gets its name and role back (the server holds them 15 s); if the admin reloads, all other clients are told to refresh too.
 A client gone for more than 15 s is forgotten: the next in line inherits its team, or the admin role.
 Tests (`test/*.test.js`) start their own servers on a random loopback port, so they never touch a game you have running.
@@ -38,9 +38,9 @@ Tests (`test/*.test.js`) start their own servers on a random loopback port, so t
 | `turns` | The teams take turns (12 s): the attacker puts two passers behind the ball, the other team defends in a wall line |
 | `receiver` | Player 1 waits next to the opposing goal as a target man; players 2-3 stand behind the ball and pass to him; player 4 guards our goal |
 | `fortress` | All four in defense stance around our own goal, facing the ball, to deflect everything |
-| `shadow` | Players 1-2 each stand between one of the two most advanced opponents and our goal (wall on); players 3-4 attack with passes |
+| `shadow` | Players 1-2 each stand between one of the two most advanced opponents and our goal (defense stance); players 3-4 attack with passes |
 | `lanes` | All four run sideways, each in its own quarter of the pitch length; the two nearest our goal defend, the other two attack |
-| `relay` | A bucket brigade: player 1 passes from behind the ball; players 2-4 stand as attack-stance stepping stones every 12 m toward the goal |
-| `plow` | All four form a wall line across the pitch and advance abreast, 12 m behind the ball, pushing the wave toward the goal like a piston |
+| `relay` | A bucket brigade: player 1 passes from behind the ball; players 2-4 stand as dribble-stance stepping stones every 12 m toward the goal |
+| `plow` | All four form a line of defenders across the pitch and advance abreast, 12 m behind the ball, clearing the wave toward the goal |
 
 Example: `BOTS=shadow,- node server.js` and play red against the shadow bot.

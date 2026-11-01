@@ -111,9 +111,40 @@ test('a human plays the free team against a bot; both-bot matches take no player
   await until(() => h.hello && h.last);
   assert.equal(h.hello.slot, 1, 'the human gets the team the bot does not run');
   await until(() => h.last.phase === 'countdown'); // match starts at once: the bot team is already present
-  const p2 = await boot({ bots: ['lanes', 'shadow'], preset: 'default', params: {} });
+  const p2 = await boot({ paused: false, bots: ['lanes', 'shadow'], preset: 'default', params: {} });
   const w = await open(p2);
   await until(() => w.hello);
   assert.equal(w.hello.slot, -1);
   await until(() => w.last && w.last.phase === 'playing' && w.last.params === undefined);
+});
+
+test('roles, pause and sliders: admin / human / spectators, starts paused, admin plays, admin and human move sliders', async () => {
+  const port = await boot({ bots: [null, null] });
+  const a = await open(port), b = await open(port), c = await open(port);
+  await until(() => a.hello && b.hello && c.hello && a.last && a.last.phase === 'countdown');
+  assert.deepEqual([a.hello.role, b.hello.role, c.hello.role], ['admin', 'human', 'spectator']);
+  assert.equal(a.hello.paused, true);
+  const t0 = a.last.timer;
+  await new Promise((r) => setTimeout(r, 200));
+  assert.deepEqual([a.last.paused, a.last.timer], [true, t0], 'paused: the clock does not move');
+  b.ws.send(JSON.stringify({ t: 'pause', on: false })); // not the admin: ignored
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(a.last.paused, true);
+  a.ws.send(JSON.stringify({ t: 'pause', on: false }));
+  await until(() => a.last.paused === false && a.last.timer < t0);
+  b.ws.send(JSON.stringify({ t: 'param', k: 'packetWidth', v: 7 }));
+  a.ws.send(JSON.stringify({ t: 'param', k: 'mass', v: 2 }));
+  c.ws.send(JSON.stringify({ t: 'param', k: 'mass', v: 3 })); // spectator: ignored
+  let seen = null;
+  c.ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.t === 'params') seen = m.params; };
+  await until(() => seen && seen.mass === 2);
+  assert.equal(seen.packetWidth, 7);
+  a.ws.send(JSON.stringify({ t: 'pause', on: true }));
+  await until(() => a.last.paused === true);
+});
+
+test('static files are never cached, so a browser refresh reloads the whole app', async () => {
+  const port = await boot({ bots: [null, null] });
+  const res = await fetch('http://127.0.0.1:' + port + '/client.js');
+  assert.equal(res.headers.get('cache-control'), 'no-store');
 });
