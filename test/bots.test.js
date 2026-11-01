@@ -82,7 +82,7 @@ test('plow: four walls advance abreast toward the goal and keep 12 m behind the 
 test('turns: a scripted match with the default settings runs without trouble and the wave stays valid', () => {
   const m = play(['turns', 'fortress'], 40);
   assert.ok(m.R.every(Number.isFinite));
-  assert.deepEqual(Object.keys(STRATEGIES).sort(), ['fortress', 'idle', 'lanes', 'plow', 'random', 'receiver', 'relay', 'shadow', 'turns']);
+  assert.deepEqual(Object.keys(STRATEGIES).sort(), ['chase', 'fortress', 'idle', 'lanes', 'plow', 'random', 'receiver', 'relay', 'shadow', 'turns']);
   drive(m); // default: turns vs turns
   drive(m, [null, 'lanes']); // a null team is left alone
 });
@@ -116,11 +116,18 @@ test('symmetry [asymmetry fix]: every strategy except turns plays as an exact mi
 });
 
 
-
 test('idle: no action, the four players stay at their kick-off spots', () => {
   const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; m.setParam('threshold', 0.9);
   const start = team(m, 0).map((p) => ({ x: p.x, y: p.y }));
   m.setOrder(0, 5, 0); // even a moving player stops
   for (let k = 0; k < 5 * 30; k++) { drive(m, ['idle', null]); m.step(1 / 30); }
   team(m, 0).forEach((p, n) => assert.ok(Math.hypot(p.x - start[n].x, p.y - start[n].y) < 0.5, 'player ' + n));
+});
+
+test('chase: the chasers score against idle, on both sides', () => {
+  for (const [t, names] of [[0, ['chase', 'idle']], [1, ['idle', 'chase']]]) {
+    const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing';
+    for (let k = 0; k < 60 * 30; k++) { drive(m, names); m.step(1 / 30); }
+    assert.ok(m.score[t] > m.score[1 - t], 'team ' + t + ' score ' + m.score.join(':'));
+  }
 });

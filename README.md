@@ -43,6 +43,7 @@ Tests (`test/*.test.js`) start their own servers on a random loopback port, so t
 | `lanes` | All four run sideways, each in its own quarter of the pitch length; the two nearest our goal defend, the other two attack |
 | `relay` | A bucket brigade: player 1 passes from behind the ball; players 2-4 stand as dribble-stance stepping stones every 12 m toward the goal |
 | `plow` | All four form a line of defenders across the pitch and advance abreast, 12 m behind the ball, clearing the wave toward the goal |
+| `chase` | Each player runs to one of the hot spots of the wave (at least half as hot as the hottest, none inside the opposing goal) in Shot stance, then dribbles it toward the opposing goal at 3 m/s |
 | `idle` | No action: all four stand still where they are, keeping their stance (a target for testing, or a team left alone) |
 
 Example: `BOTS=shadow,- node server.js` and play red against the shadow bot.
