@@ -164,7 +164,7 @@ function start(port, opts = {}) {
   return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, opts.host, () => { server.off('error', reject); resolve(server); }); });
 }
 
-// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks the starting strategies: random turns receiver fortress shadow lanes relay plow (default random,random).
+// BOTS=receiver,fortress (team 0, team 1; '-' = a human) picks the starting strategies: random turns receiver fortress shadow lanes relay plow idle (default random,random).
 // The first browser to connect is the admin and can change who controls each team from the band at the top of the page.
 // The match starts paused; the admin starts it with the play button. Opening or refreshing the page loads everything afresh (no caching).
 // DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.

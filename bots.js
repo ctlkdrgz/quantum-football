@@ -7,6 +7,7 @@
 //   lanes     the four players run sideways, each in its own quarter of the pitch length (two defend, two attack)
 //   relay     a bucket brigade: player 0 passes from behind the ball, players 1-3 stand as stepping stones on the way to the goal, in dribble stance
 //   plow      the four players form a line of defenders and advance together, clearing the wave in front of them toward the goal
+//   idle      no action: the four players stand still, whatever their stance
 //   random    every player picks a random velocity and stance every 0.5-2 s (not mirror-symmetric, by design)
 const { W, H, N, TEAM_SIZE, STANCE } = require('./sim');
 const { DEFENSE, PASS, DRIBBLE } = STANCE;
@@ -111,6 +112,10 @@ const STRATEGIES = {
       const i = k.base + n, d = Math.min(12 * n, Math.max(0, L - 8));
       m.setStance(i, DRIBBLE); goTo(m, i, c.x + ux * d, c.y + uy * d, ux, uy);
     });
+  },
+
+  idle(m, t) {
+    for (let n = 0; n < TEAM_SIZE; n++) m.setOrder(t * TEAM_SIZE + n, 0, 0);
   },
 
   random(m, t, c, st) {
