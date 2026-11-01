@@ -94,7 +94,7 @@ test('when the admin reloads they keep name, role and admin right; everybody els
   assert.equal(a2.hello.admin, true);
 });
 
-test('when the admin reloads, the game starts afresh: starting controllers and sliders, score 0, full clock, paused', async () => {
+test('when the admin reloads, the game starts afresh: starting controllers and sliders, score 0, clock at 0, paused', async () => {
   const port = await boot({ bots: ['fortress', null], params: { kick: 1 } });
   const a = await open(port), b = await open(port);
   await until(() => a.hello && b.hello);
@@ -108,7 +108,7 @@ test('when the admin reloads, the game starts afresh: starting controllers and s
   const a2 = await open(port, a.hello.id);
   await until(() => a2.hello && a2.last);
   assert.deepEqual([a2.hello.admin, a2.hello.paused, a2.hello.bots, a2.hello.params.kick, a2.hello.params.mass], [true, true, ['fortress', null], 1, 0.7]);
-  assert.deepEqual([a2.last.score, a2.last.phase, a2.last.paused, a2.last.remaining], [[0, 0], 'countdown', true, 180]);
+  assert.deepEqual([a2.last.score, a2.last.phase, a2.last.paused, a2.last.clock], [[0, 0], 'countdown', true, 0]);
   assert.equal(b.reloads, 1);
 });
 

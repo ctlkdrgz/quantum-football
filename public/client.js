@@ -151,13 +151,12 @@ canvas.addEventListener('pointerup', (e) => {
 function updateHud() {
   document.getElementById('s0').textContent = state.score[0];
   document.getElementById('s1').textContent = state.score[1];
-  const mm = Math.floor(state.remaining / 60), ss = String(Math.floor(state.remaining % 60)).padStart(2, '0');
+  const mm = Math.floor(state.clock / 60), ss = String(Math.floor(state.clock % 60)).padStart(2, '0');
   const who = role + (slot < 0 ? '' : ', ' + (slot ? 'red' : 'blue') + ', player ' + (selected + 1) + ' selected');
   let t;
   if (state.phase === 'waiting') t = 'waiting for the second player…';
   else if (state.phase === 'countdown') t = 'kick-off in ' + Math.ceil(state.timer);
   else if (state.phase === 'goal') t = (state.lastScorer ? 'RED' : 'BLUE') + ' scores!';
-  else if (state.phase === 'over') t = 'full time — ' + (state.score[0] === state.score[1] ? 'draw' : state.score[0] > state.score[1] ? 'blue wins' : 'red wins');
   else t = mm + ':' + ss;
   if (paused) t = 'PAUSED · ' + t;
   const names = bots[0] || bots[1] ? ' · blue: ' + (bots[0] || 'human') + ' / red: ' + (bots[1] || 'human') : '';

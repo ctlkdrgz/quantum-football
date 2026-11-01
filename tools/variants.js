@@ -21,7 +21,7 @@ function pool(preset) {
   let goals = 0; const ns = [], ls = [];
   for (const pair of PAIRS) {
     const m = fresh(preset);
-    for (let k = 0; k < 30 * 120 && m.phase !== 'over'; k++) {
+    for (let k = 0; k < 30 * 120; k++) {
       bots.drive(m, pair); m.step(1 / 30);
       if (k % 15 === 0 && m.phase === 'playing') { ns.push(m.wavesAcrossWidth()); ls.push(m.characteristicLength()); }
     }
@@ -63,7 +63,7 @@ function options(preset) {
     const score = (opp) => {
       const m = fresh(preset);
       if (!opp) for (let i = 4; i < 8; i++) { m.players[i].x = W - 2; m.players[i].y = 2 + 12 * (i - 4); m.setStance(i, STANCE.DEFENSE); m.face(i, 1, 0); }
-      for (let k = 0; k < 30 * 90 && m.phase !== 'over'; k++) { bots.drive(m, [a, opp]); m.step(1 / 30); }
+      for (let k = 0; k < 30 * 90; k++) { bots.drive(m, [a, opp]); m.step(1 / 30); }
       return m.score[0];
     };
     out.strategies[a] = { unopposed: score(null), vsFortress: score('fortress') };

@@ -59,17 +59,16 @@ test('probability in the right goal above threshold scores for player 0 then res
   assert.equal(m.phase, 'playing');
 });
 
-test('left goal scores for player 1; full time ends then restarts', () => {
+test('left goal scores for player 1; the match never ends', () => {
   const m = playing();
   m.R.fill(0); m.I.fill(0);
   for (let y = 20; y < 30; y++) for (let x = 1; x < GOAL_DEPTH; x++) m.R[y * W + x] = 1;
   m.normalize(); m.step(1 / 30);
   assert.deepEqual(m.score, [0, 1]);
-  const n = playing(); n.setParam('matchSeconds', 30); n.remaining = 0.01; n.step(0.05);
-  assert.equal(n.phase, 'over');
-  run(n, 11);
-  assert.equal(n.phase, 'countdown');
-  assert.deepEqual(n.score, [0, 0]);
+  const n = playing(); n.clock = 3600; n.step(0.05);
+  assert.equal(n.phase, 'playing');
+  assert.ok(n.clock > 3600, 'the clock counts up');
+  assert.equal(n.setParam('matchSeconds', 30), false, 'no match duration any more');
 });
 
 test('match waits for two players and a disconnect resets everything', () => {

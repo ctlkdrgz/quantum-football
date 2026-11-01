@@ -36,7 +36,7 @@ for (const s of Object.keys(bots.STRATEGIES).filter((n) => n !== 'random')) {
 let blue = 0, red = 0; const names = Object.keys(bots.STRATEGIES);
 for (const a of names) for (const b of names) {
   const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.kickoff(); m.phase = 'playing';
-  for (let k = 0; k < 30 * 90 && m.phase !== 'over'; k++) { bots.drive(m, [a, b]); m.step(1 / 30); }
+  for (let k = 0; k < 30 * 90; k++) { bots.drive(m, [a, b]); m.step(1 / 30); }
   blue += m.score[0]; red += m.score[1];
 }
 console.log('round robin, 49 matches of 90 s: blue', blue, 'red', red, 'bias', ((blue - red) / (blue + red)).toFixed(2));
