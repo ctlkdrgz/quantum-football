@@ -17,7 +17,7 @@ const open = (port, id = '') => new Promise((resolve) => {
   };
   ws.onopen = () => { sockets.push(ws); resolve(c); };
 });
-const until = async (f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise((r) => setTimeout(r, 30)); assert.ok(f()); };
+const until = async (f, tries = 100) => { for (let i = 0; i < tries && !f(); i++) await new Promise((r) => setTimeout(r, 30)); assert.ok(f()); };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('first two browsers play, the third spectates, and a free slot is reused', async () => {
@@ -95,19 +95,20 @@ test('when the admin reloads they keep name, role and admin right; everybody els
 });
 
 test('when the admin reloads, the game starts afresh: starting controllers and sliders, score 0, clock at 0, paused', async () => {
-  const port = await boot({ bots: ['fortress', null], params: { kick: 1 } });
+  const port = await boot({ bots: ['fortress', null], params: { kickSpeed: 10 } });
   const a = await open(port), b = await open(port);
   await until(() => a.hello && b.hello);
   a.ws.send(JSON.stringify({ t: 'pause', on: false }));
-  a.ws.send(JSON.stringify({ t: 'param', k: 'kick', v: 2.5 }));
+  a.ws.send(JSON.stringify({ t: 'param', k: 'kickSpeed', v: 25 }));
   a.ws.send(JSON.stringify({ t: 'param', k: 'mass', v: 2 }));
   a.ws.send(JSON.stringify({ t: 'control', team: 0, who: 'lanes' }));
-  await until(() => b.last && !b.last.paused && b.last.phase === 'playing');
+  // the 3 s countdown runs in frames (sim.js FRAME_DT): on a loaded machine it takes longer than 3 s of wall time
+  await until(() => b.last && !b.last.paused && b.last.phase === 'playing', 300);
   a.ws.close();
   await pause(30);
   const a2 = await open(port, a.hello.id);
   await until(() => a2.hello && a2.last);
-  assert.deepEqual([a2.hello.admin, a2.hello.paused, a2.hello.bots, a2.hello.params.kick, a2.hello.params.mass], [true, true, ['fortress', null], 1, 0.7]);
+  assert.deepEqual([a2.hello.admin, a2.hello.paused, a2.hello.bots, a2.hello.params.kickSpeed, a2.hello.params.mass], [true, true, ['fortress', null], 10, 0.5]);
   assert.deepEqual([a2.last.score, a2.last.phase, a2.last.paused, a2.last.clock], [[0, 0], 'countdown', true, 0]);
   assert.equal(b.reloads, 1);
 });
@@ -133,7 +134,7 @@ test('a human plays the free team against a bot; both-bot matches take no player
   const w = await open(p2);
   await until(() => w.hello);
   assert.equal(w.hello.slot, -1);
-  await until(() => w.last && w.last.phase === 'playing' && w.last.params === undefined);
+  await until(() => w.last && w.last.phase === 'playing' && w.last.params === undefined, 300);
 });
 
 test('roles, pause and sliders: admin / human / spectators, starts paused, admin plays, admin and human move sliders', async () => {

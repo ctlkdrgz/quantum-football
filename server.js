@@ -6,7 +6,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { Match, PARAMS, PRESETS, W, H, GOAL_DEPTH, TEAM_SIZE, CATCH } = require('./sim');
+const { Match, PARAMS, PRESETS, W, H, GOAL_DEPTH, TEAM_SIZE, CATCH, FRAME_DT } = require('./sim');
 const bots = require('./bots');
 const { STRATEGIES } = bots;
 const { GameLog } = require('./gamelog');
@@ -26,7 +26,7 @@ function buildInfo(dir = __dirname) {
   } catch { return 'unknown build'; }
 }
 const BUILD = buildInfo();
-const TICK_MS = 33;
+const TICK_MS = 1000 / 30; // one frame (FRAME_DT) per tick at full speed
 
 function frame(opcode, payload) {
   const n = payload.length;
@@ -183,14 +183,13 @@ function start(port, opts = {}) {
     sock.on('error', drop);
   });
 
-  let last = Date.now();
+  // Every tick is one frame of exactly FRAME_DT seconds of game clock, whatever the wall clock did: a loaded server shows fewer frames per second
+  // (the game runs slower), never a different game. A "second" in the game is FRAME_DT^-1 frames.
   const timer = setInterval(() => {
-    const now = Date.now();
     if ((control[0] || control[1]) && !match.paused) bots.drive(match, control);
-    const dt = Math.min(0.1, (now - last) / 1000), live = !match.paused && match.phase !== 'waiting';
-    match.step(dt); // a no-op while paused
-    if (log && live) log.frame(match, dt);
-    last = now;
+    const live = !match.paused && match.phase !== 'waiting';
+    match.step(FRAME_DT); // a no-op while paused
+    if (log && live) log.frame(match, FRAME_DT);
     if (![...members.values()].some((c) => c.sock)) return;
     const s = match.snapshot();
     s.t = 'state';
@@ -206,8 +205,8 @@ function start(port, opts = {}) {
 // The first browser to connect is the admin and can change who controls each team from the band at the top of the page.
 // The match starts paused; the admin starts it with the play button. Opening or refreshing the page loads everything afresh (no caching).
 // DEMO=1 is BOTS=turns,turns. With a bot on both teams everybody just watches.
-// PRESET=default|waves|additive|waves-kick|waves-well|waves-wall|waves-mass|hybrid starts from a named parameter set (docs/VARIANTS.md).
-// PARAMS='{"kick":0.5,"additive":1}' overrides slider defaults at start (JSON).
+// PRESET=default|additive starts from a named parameter set (docs/VARIANTS.md).
+// PARAMS='{"kickSpeed":15,"additive":1}' overrides slider defaults at start (JSON).
 function parseEnv(env) {
   const list = (env.BOTS || (env.DEMO ? 'turns,turns' : 'random,random')).split(',').map((s) => (s && s !== '-' ? s : null));
   const bots = [list[0] || null, list[1] || null];
