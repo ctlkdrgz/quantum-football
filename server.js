@@ -54,6 +54,15 @@ function start(port, opts = {}) {
   for (const [k, val] of Object.entries(opts.params || {})) match.setParam(k, val);
   match.paused = opts.paused !== false; // starts paused: the admin presses play
   match.kickoff(); // some parameters (packet width, wall mode) take effect at kick-off
+  const fresh = () => { // the admin reloaded: back to the starting controllers and sliders, a new match, paused
+    control.splice(0, 2, ...(opts.bots || ['random', 'random']).slice(0, 2));
+    match.botState = [{}, {}];
+    const p0 = { ...Object.fromEntries(Object.entries(PARAMS).map(([k, d]) => [k, d.def])), ...(opts.params || {}) };
+    for (const [k, val] of Object.entries(p0)) match.setParam(k, val);
+    match.paused = true;
+    match.phase = 'waiting'; // assign() then restarts the match (score, clock, kick-off) once both teams are present
+    match.setPresent(0, false);
+  };
   // Members are clients identified by a token (?id=) that the page keeps across reloads, in join order: the order gives the name
   // ("Client 3") and decides the admin (the earliest) and who gets a free human team. A member whose socket closed stays as a ghost
   // for graceMs and keeps its role, so a reload gives the same name, slot and admin right back.
@@ -109,7 +118,11 @@ function start(port, opts = {}) {
       clearTimeout(c.timer);
       if (c.sock) c.sock.destroy(); // the old page's socket may not have been noticed as closed yet
       c.sock = sock;
-      if (c === admin()) members.forEach((o) => { if (o !== c) send(o, { t: 'reload' }); }); // the admin reloaded: everybody else refreshes
+      if (c === admin()) { // the admin reloaded: a fresh start, and everybody else refreshes
+        fresh();
+        assign(c);
+        members.forEach((o) => { if (o !== c) send(o, { t: 'reload' }); });
+      }
       hello(c);
     } else {
       const id = wanted && /^[\w-]{1,64}$/.test(wanted) && !members.has(wanted) ? wanted : crypto.randomUUID();

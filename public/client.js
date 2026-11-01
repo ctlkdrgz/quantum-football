@@ -36,7 +36,7 @@ ws.onmessage = (e) => {
     slot = m.slot; admin = m.admin; role = m.role; paused = m.paused; strategies = m.strategies; grid = m.grid; bots = m.bots; preset = m.preset; defs = m.defs; params = m.params;
     off.width = grid.W; off.height = grid.H; offCtx = off.getContext('2d'); img = offCtx.createImageData(grid.W, grid.H);
     buildSliders();
-    document.title = 'Quantum Football — ' + myName + ' (' + role + ')' + (slot >= 0 ? ', ' + (slot ? 'red' : 'blue') : '');
+    document.title = role + (slot >= 0 ? ', ' + (slot ? 'red' : 'blue') : '') + ' — Quantum Football (' + myName + ')'; // the role first: tab titles get cut
     buildBand();
     buildPause();
   } else if (m.t === 'paused') { paused = m.paused; buildPause(); }
