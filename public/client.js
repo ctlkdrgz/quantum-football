@@ -185,12 +185,17 @@ function draw() {
 
   state.players.forEach((p, i) => {
     const team = i < grid.teamSize ? 0 : 1, mine = team === slot, k = i % grid.teamSize;
-    const x = p.x * s, y = p.y * s, r = params.reach * s, a = Math.atan2(p.hy, p.hx);
+    const x = p.x * s, y = p.y * s, a = Math.atan2(p.hy, p.hx);
     const sel = mine && k === selected;
+    // the catch zone: the well's Gaussian, shaded out to 2 sigma, outlined at 1 sigma (solid for Defense, dashed otherwise)
+    const g = grid.catch[p.stance], r = g.sig * params.reach * s, wx = x + p.hx * g.off * params.reach * s, wy = y + p.hy * g.off * params.reach * s;
+    const shade = ctx.createRadialGradient(wx, wy, 0, wx, wy, 2 * r);
+    shade.addColorStop(0, COLORS[team] + '55'); shade.addColorStop(0.5, COLORS[team] + '22'); shade.addColorStop(1, COLORS[team] + '00');
+    ctx.fillStyle = shade; ctx.beginPath(); ctx.arc(wx, wy, 2 * r, 0, 7); ctx.fill();
     ctx.strokeStyle = COLORS[team]; ctx.fillStyle = COLORS[team];
     ctx.lineWidth = sel ? 3 : 1.5;
     ctx.setLineDash(p.stance === 0 ? [] : [6, 4]);
-    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(wx, wy, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill();
     ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 16, y + Math.sin(a) * 16);
     ctx.lineTo(x + Math.cos(a + 2.5) * 8, y + Math.sin(a + 2.5) * 8); ctx.lineTo(x + Math.cos(a - 2.5) * 8, y + Math.sin(a - 2.5) * 8); ctx.fill();
