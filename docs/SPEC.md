@@ -26,30 +26,31 @@ The equations and numerics behind this are in [PHYSICS.md](PHYSICS.md).
 - Selecting: the player you pressed on is selected (also Q/W/E/R for players 1-4).
 - "Having the ball" is not binary: it is the amplitude of psi near the player (shown as a % label). Every action below acts on psi locally,
   so it works exactly as much as the ball is there. Several players act at once and their effects add up.
-- Stance per player (keys 1/2/3/4 or buttons, applies to the selected player). Every stance is a **catch**: an attractive potential well just ahead of the player that holds the wave there and carries it along as they run; three of them then kick what was caught.
-  - **Defense** (1): catches over a wide area in front of the player and kicks it away straight, along the heading.
-  - **Pass** (2): catches just ahead and sends the ball at medium velocity to **all** the allies at once: the caught wave becomes a superposition of one momentum component per ally, each with probability proportional to `1 + (its distance from our own goal line)`, so the allies closer to the opposing goal are more likely receivers. Targets are the allies' *predicted* positions (position plus velocity order times the ball's travel time); allies within 2 m are skipped; with nobody left the pass goes to the goal.
-  - **Shot** (3): catches just ahead and kicks at high velocity to the opposing goal centre.
-  - **Dribble** (4): catches just ahead and does not kick: it keeps the ball just ahead of the player, regrouping the wave around them.
+- Stance per player (keys 1/2/3/4 or buttons, applies to the selected player). Every stance has a **catch zone**: a disc just ahead of the player (the player on its edge, radius = reach). The **slow** part of the ball in it, slow relative to the player, is caught at a steady rate: a fast ball is hard to catch (`catchSpeed`), and a ball running alongside the player is easy. A caught share loses part of its momentum (`absorbMean`, `absorbSpread`) and, except in Dribble, is kicked at once; it leaves as a ray from the zone while the rest of the ball stays (PHYSICS.md section 3).
+  - **Defense** (1): a 1.5 x wider zone, kicks straight along the heading (0.7 x kick speed).
+  - **Pass** (2): kicks at 0.55 x kick speed to **all** the allies at once: the caught share is split into one momentum component per ally, each with probability proportional to `1 + (its distance from our own goal line)`, so the allies closer to the opposing goal are more likely receivers. Targets are the allies' *predicted* positions (position plus velocity times the ball's travel time); allies within 2 m are skipped; with nobody left the pass goes to the goal.
+  - **Shot** (3): kicks at the full kick speed to the opposing goal centre.
+  - **Dribble** (4): catches without kicking, matching the ball's speed to the player's, and holds it with an attractive well in the zone (the only stance with a well): it keeps the ball just ahead of the player. When the player stops, the caught part stops; the uncaught part carries on.
   - Pass and Shot are **auto-aimed** (`autoAim` param, on by default; off = along the heading). The client draws each aim as a dotted line and a small circle, fainter the less likely the receiver.
-  - No stamina: a kick works as long as the ball is in the window (the window moves with the player, so a running kicker only gives a short push; stand still to kick hard).
+  - No stamina, no hold: whatever is caught is kicked in the same frame, so holding a kick stance on the ball drains it into a ray.
 
 ## Characteristic length of the ball
 `L = 1 / sum(rho_x^2)` (metres): the participation length of the ball's density summed over the pitch height, along the 100 m axis. A uniform ball gives 100 m,
 the lowest standing mode 66.7 m, a Gaussian packet of density std s gives 3.54 s, a ball squeezed into a goal a few metres. Shown in the HUD (`ball length`).
 The defaults are tuned so that **L is about half the pitch (50 m)**: a kick-off packet of width 14 (no longer the default, which is 4) has L = 49.6 m, and over bot matches L averages about 46 m
 (35-65 m for 65 % of the time, goals about 5 per 3-minute match, measured with `tune` runs of 6 bot pairings; noisy). Left alone, the ball "breathes" between 50 and 80 m.
-What it takes to keep L near 50 m while the ball is still playable: the players' reach (8 m) must be a fair fraction of L, kicks must be strong (2), wells shallow (0.5, deep wells
-squeeze L down), and the mass light (0.7, heavier balls spread more slowly and let wells win). See `docs/PLOT-ENGINE.md` for what L can do for the game.
+These numbers were measured with the force-kick model (before 2026-11-01: reach 8 m, a kick that pushed while the ball was in the window); they have not been re-measured
+with the catch/kick model. See `docs/PLOT-ENGINE.md` for what L can do for the game.
 
 ## Wall modes and presets
 `additive` (0/1, applied at the next kick-off): 0 = Dirichlet walls, the rebound interferes with the incident wave. 1 = the pitch is unfolded into a 2W x 2H torus and the
 displayed density is the sum over the four mirror images: rebounds add probability and never cancel it. `wavesAcrossWidth()` (HUD "waves") = W k_rms / 2 pi.
-Presets (`PRESETS` in `sim.js`): `default`, `waves`, `additive`, `waves-kick`, `waves-well`, `waves-wall`, `waves-mass`, `hybrid`; compared in `docs/VARIANTS.md`.
+Presets (`PRESETS` in `sim.js`): `default`, `additive`. The `waves` family belonged to the force-kick model and was removed on 2026-11-01 (its history is in `docs/VARIANTS.md`).
 
 ## Parameters (sliders, shared by both players, clamped on the server)
-Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal width, goal threshold,
-player max speed, player reach, catch well depth (Pass/Shot/Dribble), Defense well depth, kick strength. Ranges and defaults: `PARAMS` in `sim.js`.
+Wave time speed, ball mass (weight), attenuation, kick-off packet width, goal width, goal threshold, player max speed, player reach (catch zone radius),
+catch speed limit, momentum absorbed on a catch (mean, spread), kick speed, Dribble well depth. Speeds are in m/s of the players' clock. Ranges and defaults: `PARAMS` in `sim.js`.
+The game runs in frames of exactly 1/30 s (`FRAME_DT`): a loaded server shows fewer frames per second, never a different game. A list of the rules that surprise: `docs/RULES.md`.
 
 ## Architecture
 - `sim.js`: pure simulation (no I/O), unit-tested. `server.js`: static files + dependency-free WebSocket, 30 Hz tick, server-authoritative.

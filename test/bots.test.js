@@ -92,9 +92,9 @@ test('BOTS / DEMO environment parsing', () => {
   assert.deepEqual(parseEnv({ BOTS: 'lanes,shadow' }), { bots: ['lanes', 'shadow'], preset: 'default', params: {} });
   assert.deepEqual(parseEnv({ DEMO: '1' }), { bots: ['turns', 'turns'], preset: 'default', params: {} });
   assert.deepEqual(parseEnv({}), { bots: ['random', 'random'], preset: 'default', params: {} });
-  assert.deepEqual(parseEnv({ PARAMS: '{"kick":0.5}' }).params, { kick: 0.5 });
-  assert.deepEqual(parseEnv({ PRESET: 'additive', PARAMS: '{"kick":1}' }).params, { additive: 1, kick: 1 });
-  assert.equal(parseEnv({ PRESET: 'waves' }).preset, 'waves'); assert.equal(parseEnv({ PRESET: 'waves', PARAMS: '{}' }).preset, 'waves+');
+  assert.deepEqual(parseEnv({ PARAMS: '{"kickSpeed":5}' }).params, { kickSpeed: 5 });
+  assert.deepEqual(parseEnv({ PRESET: 'additive', PARAMS: '{"kickSpeed":10}' }).params, { additive: 1, kickSpeed: 10 });
+  assert.equal(parseEnv({ PRESET: 'additive' }).preset, 'additive'); assert.equal(parseEnv({ PRESET: 'additive', PARAMS: '{}' }).preset, 'additive+');
   assert.throws(() => parseEnv({ PRESET: 'nope' }), /unknown preset/);
   assert.throws(() => parseEnv({ BOTS: 'nope,-' }), /unknown bot nope/);
 });
@@ -111,7 +111,9 @@ test('symmetry [asymmetry fix]: every strategy except turns plays as an exact mi
     const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; m.setParam('threshold', 0.9);
     let worst = 0;
     for (let k = 0; k < 30 * 20; k++) { drive(m, [s, s]); m.step(1 / 30); worst = Math.max(worst, err(m)); }
-    assert.ok(worst < 1e-9, s + ' ' + worst);
+    // 1e-6, not rounding level: the catch/kick feedback amplifies the bots' 1e-13 position rounding about x10 every 2.4 s in Pass-heavy play
+    // (shadow, lanes reach 2e-7 in 20 s); a real asymmetry shows up at 1e-3 or more within a few frames (docs/ASYMMETRY.md)
+    assert.ok(worst < 1e-6, s + ' ' + worst);
   }
 });
 

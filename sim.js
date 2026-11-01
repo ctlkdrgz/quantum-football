@@ -16,49 +16,55 @@ const TEAM_SIZE = 4;
 const NP = 2 * TEAM_SIZE;
 const COUNTDOWN_S = 3;
 const GOAL_PAUSE_S = 2.5;
-// Every stance is a catch well (a moving attractive Gaussian ahead of the player) plus, except Dribble, a kick of the caught wave.
+// Every stance has a catch zone: a disc ahead of the player, the player on its edge. The ball in it is caught at a rate that falls with its speed
+// relative to the player; on a catch it loses a share beta of that relative momentum and, except in Dribble, gets an instant kick toward the aims.
+// Dribble alone also has a holding well (an attractive potential) in its zone.
 const STANCE = { DEFENSE: 0, PASS: 1, SHOT: 2, DRIBBLE: 3 };
-// The kick window is wider than the catch well: kappa*g(r)*d.r has a reversed momentum in its tails (|d.r| > sigma), so a narrow window would kick the caught wave unevenly.
-const KICK_WIDTH = 2;
-const PULSE_S = 0.4; // seconds between the splits of a Pass to several allies
-const KICK_GAIN = [0.7, 0.5, 1.0, 0]; // by stance: Defense clears straight (fairly hard), Pass medium, Shot high, Dribble none
-// Catch well geometry by stance, in units of the reach: Gaussian width sig and offset of its centre ahead of the player (Defense wide and a bit farther).
-const CATCH = [{ sig: 1.5, off: 1.2 }, { sig: 0.8, off: 0.8 }, { sig: 0.8, off: 0.8 }, { sig: 0.8, off: 0.8 }];
+const KICK_GAIN = [0.7, 0.55, 1.0, 0]; // by stance, times the kick speed: Defense clears straight (fairly hard), Pass medium, Shot full, Dribble none
+// Catch zone by stance, in units of the reach: disc radius r, its centre `off` ahead of the player (r = off: the player stands on the edge). Defense is wider.
+const CATCH = [{ r: 1.5, off: 1.5 }, { r: 1, off: 1 }, { r: 1, off: 1 }, { r: 1, off: 1 }];
+// Only the slow part of the ball is catchable (selectivity f(v) = exp(-(v / catchSpeed)^2), see catchPlan); it is caught at the rate (per second)
+// CATCH_GAIN * (v + CATCH_V0) / zone diameter, v = its RMS speed relative to the player. That rate cancels the time a ball spends crossing the zone, so the
+// chance per crossing is set by f alone (speed is not counted twice); CATCH_V0 keeps a still ball catchable.
+const CATCH_GAIN = 3;
+const CATCH_V0 = 6;
+const BLUR_MAX = 12; // metres: cap of the slow-part blur radius (3 std), so a very low catch speed stays affordable
+// The share beta of relative momentum removed on a catch is Gaussian (mean absorbMean, std absorbSpread): sampled at 3 points (Gauss-Hermite), clamped to [0, 1].
+const BETA_NODES = [[-Math.sqrt(3), 1 / 6], [0, 2 / 3], [Math.sqrt(3), 1 / 6]];
+const FRAME_DT = 1 / 30; // one simulation frame, in seconds of game clock: the server steps exactly this per frame, whatever its load
+const NORM_DRIFT = 0.005; // the global renormalisation runs only when the total probability has drifted by more than this (see evolve)
 
-// Every slider. Units: lengths in metres, "game time" = real time x timeScale.
+// Every slider. Units: lengths in metres, speeds in metres per second of the players' clock, "wave time" = real time x timeScale.
 const PARAMS = {
-  timeScale:   { min: 0.5,  max: 12,   def: 5,    step: 0.1,  label: 'Wave time speed', tip: "How fast the wave clock runs against the players' clock. Higher: the ball moves, spreads and reacts to kicks faster (its speed is momentum x timeScale / mass). Players are not affected." },
-  mass:        { min: 0.5,  max: 4,    def: 0.7,  step: 0.05, label: 'Ball weight (mass)', tip: 'Inertia of the ball. Heavier: it spreads more slowly and travels more slowly after the same kick. Lighter: livelier, but it disperses quickly.' },
-  attenuation: { min: 0,    max: 1,    def: 0.05, step: 0.01, label: 'Attenuation (smoothing)', tip: "Smoothing applied every tick: damps the short ripples of the wave. High values keep only a few long waves on the pitch (the 'waves' presets use 1). The total probability is kept at 1 anyway." },
+  timeScale:   { min: 0.5,  max: 30,   def: 12,   step: 0.1,  label: 'Wave time speed', tip: "How fast the wave clock runs against the players' clock. With the ball weight it sets hbar/m = timeScale / mass, the size of every quantum effect: fringe spacing (2 pi hbar/m / speed change) and how fast the ball spreads. Players are not affected." },
+  mass:        { min: 0.2,  max: 4,    def: 0.5,  step: 0.05, label: 'Ball weight (mass)', tip: 'Inertia of the ball, against the wave time speed: hbar/m = timeScale / mass. Heavier: it spreads more slowly and its fringes are finer. Kick and catch speeds are in m/s and do not depend on it.' },
+  attenuation: { min: 0,    max: 1,    def: 0.02, step: 0.01, label: 'Attenuation (smoothing)', tip: 'Smoothing applied every frame: damps the short ripples of the wave, and fast balls more than slow ones (it acts like k^2). Keep it light: at 0.05 a 20 m/s ball keeps about 2/3 of itself over 2 s, at 1 it is gone. The total probability is kept at 1 anyway.' },
   packetWidth: { min: 1,    max: 20,   def: 4,    step: 0.5,  label: 'Ball size at kick-off: packet width (m)', tip: 'Width (standard deviation, metres) of the ball placed at the centre at each kick-off. Changes take effect at the next kick-off (at once while waiting or counting down).' },
-  goalHeight:  { min: 6,    max: 40,   def: 20,   step: 1,    label: 'Goal height (m)', tip: 'Width of the goal mouth along the end wall (metres). The goal zone is that width times 6 m deep.' },
+  goalHeight:  { min: 6,    max: 40,   def: 20,   step: 1,    label: 'Goal width (m)', tip: 'Width of the goal mouth along the end wall (metres). The goal zone is that width times 6 m deep.' },
   threshold:   { min: 0.05, max: 0.9,  def: 0.1,  step: 0.01, label: 'Goal threshold (probability)', tip: 'A goal is scored when the probability inside a goal zone reaches this value (shown by the bar next to each goal).' },
   runSpeed:    { min: 2,    max: 30,   def: 12,   step: 0.5,  label: 'Player max speed (m/s)', tip: 'Top speed of every player (metres per real second). Does not touch the ball physics.' },
-  reach:       { min: 1.5,  max: 12,   def: 8,    step: 0.1,  label: 'Player reach (m)', tip: "SIZE and DISTANCE of every player's effect on the ball, in metres (the scale of the shaded catch zone). The catch well sits 0.8 x reach ahead of the player with width 0.8 x reach (Defense: 1.2 x reach ahead, width 1.5 x reach); kicks act over that zone too. Bigger reach = catches from farther, over a wider area. It says WHERE a player acts, not HOW STRONGLY: that is the well depth." },
-  wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Pass/Shot/Dribble: catch well depth', tip: 'STRENGTH of the catch well for Pass, Shot and Dribble: how deep the attractive dip ahead of the player is. Deeper = holds the ball tighter, drags it along better and compresses it; 0 = no catching at all (kicks still act). It says HOW STRONGLY a player holds, not WHERE: that is the reach.' },
-  wallHeight:  { min: 0,    max: 4,    def: 1,    step: 0.05, label: 'Defense: wide catch well depth', tip: 'Same as the well depth, but for the Defense stance only: strength of its wider, farther catch well (the name dates from when Defense was a repulsive wall).' },
+  reach:       { min: 1.5,  max: 8,    def: 4.5,  step: 0.1,  label: 'Player reach: catch zone radius (m)', tip: "Radius of every player's catch zone, a disc just ahead of the player (the player stands on its edge); Defense: 1.5 x wider. The ball inside it can be caught, kicked, or held." },
+  catchSpeed:  { min: 5,    max: 40,   def: 15,   step: 0.5,  label: 'Catch: speed limit (m/s)', tip: 'How hard a fast ball is to catch. A ball crossing a zone at this speed, relative to the player, is caught about a third as often as a still one; twice as fast, almost never. Lower = only slow balls get caught.' },
+  absorbMean:  { min: 0,    max: 1,    def: 0.6,  step: 0.05, label: 'Catch: momentum absorbed (mean)', tip: "Share of the ball's momentum, relative to the player, removed when it is caught (before any kick). 1: a caught ball always leaves at the kick speed. 0: the kick only adds, so a chain of kickers makes it faster and faster." },
+  absorbSpread:{ min: 0,    max: 0.5,  def: 0.25, step: 0.01, label: 'Catch: momentum absorbed (spread)', tip: 'Randomness of the absorbed share (standard deviation around the mean). It scatters caught balls: some leave slowed a lot, some barely touched.' },
+  kickSpeed:   { min: 0,    max: 40,   def: 22,   step: 0.5,  label: 'Kick speed (m/s)', tip: "Speed given to a caught ball at once, times the stance's gain: Shot 1, Defense 0.7, Pass 0.55, Dribble 0. Only the caught share is kicked, so a kick sends a ray from the zone, not the whole ball." },
+  wellDepth:   { min: 0,    max: 3,    def: 0.5,  step: 0.05, label: 'Dribble: holding well depth', tip: 'Depth of the attractive well in the Dribble zone (other stances have none). It keeps the ball together and in the zone while the player carries it; catching matches its speed to the player.' },
   autoAim:     { min: 0,    max: 1,    def: 1,    step: 1,    label: 'Auto-aim pass/shot at allies/goal (0 = along heading)', tip: "1: Pass kicks toward the allies (more toward the more advanced ones) and Shot toward the opposing goal. 0: both kick straight along the player's heading." },
   additive:    { min: 0,    max: 1,    def: 0,    step: 1,    label: 'Walls: coherent (0) / additive (1), next kick-off', tip: 'Wall behaviour, from the next kick-off. 0 (coherent): the wave reflects off the walls and interferes with itself. 1 (additive): rebounds add probability instead of interfering.' },
-  kick:        { min: 0,    max: 3,    def: 2,    step: 0.05, label: 'Kick strength (momentum/s)', tip: "Strength of every kick (momentum given per second while the ball is in the zone), times the stance's gain: Shot 1, Defense 0.7, Pass 0.5, Dribble 0. Beyond a point a harder kick no longer makes the ball faster." },
 };
 
-// Named parameter sets (overrides of the defaults), see docs/VARIANTS.md.
+// Named parameter sets (overrides of the defaults), see docs/VARIANTS.md. The `waves` family belonged to the force-kick model (before 2026-11-01) and is gone.
 const PRESETS = {
   default: {},
-  // About 2-3 waves across the pitch length (median over bot matches 2.7, the defaults give about 15): strong smoothing, light heavy-time, gentle kicks.
-  waves: { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.3, wallHeight: 1, wellDepth: 0.3 },
   // Default physics, but rebounds on the walls add probability instead of interfering (see the wall modes above).
   additive: { additive: 1 },
-  // Small tunings around `waves`, all about three waves across the pitch (a wavelength of a third of the width): a stronger kick, a deeper well, a higher wall, a heavier ball.
-  'waves-kick': { timeScale: 12, mass: 0.5, attenuation: 1, kick: 1, wallHeight: 1, wellDepth: 0.3 },
-  'waves-well': { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.6, wallHeight: 1, wellDepth: 0.6 },
-  'waves-wall': { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.6, wallHeight: 2, wellDepth: 0.3 },
-  'waves-mass': { timeScale: 12, mass: 0.6, attenuation: 1, kick: 0.6, wallHeight: 1, wellDepth: 0.3 },
-  // An experiment from docs/VARIANTS.md (waves + additive walls + deeper well). Narrower than either parent: not recommended.
-  hybrid: { timeScale: 12, mass: 0.5, attenuation: 1, kick: 0.3, wallHeight: 1, wellDepth: 1, additive: 1 },
 };
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+// Taper of a catch zone of radius rz at squared distance d2 from its centre: 1 over the inner half, then cos^4 down to 0 at the edge. Its square root
+// (the amplitude a catch moves) has no kink anywhere: a kink at the edge scattered part of the ball backwards. Flat-topped, so the zone's
+// effective width stays close to its radius (narrow zones cannot separate a small kick from the ball, see docs/PHYSICS.md).
+const taper = (d2, rz) => { const r = Math.sqrt(d2) / rz; if (r >= 1) return 0; if (r <= 0.5) return 1; const c = Math.cos(Math.PI * (r - 0.5)); return c * c * c * c; };
 
 class Match {
   constructor() {
@@ -69,6 +75,7 @@ class Match {
     this.I = new Float64Array(GN);
     this.V = new Float64Array(GN);
     this.A = new Float64Array(GN); // scratch
+    this.DR = new Float64Array(GN); this.DI = new Float64Array(GN); this.T = new Float64Array(GN); // catch changes and tapers (catchAll)
     this.D = new Float64Array(N); // density on the pitch (folded in additive mode)
     this.setGrid(false);
     this.present = [false, false];
@@ -179,17 +186,24 @@ class Match {
     for (let i = 0; i < this.gn; i++) { this.R[i] *= f; this.I[i] *= f; }
   }
 
-  // Density of the ball on the pitch, W x H. Additive mode adds the four mirror images.
+  // Density of the ball on the pitch, W x H, summing to exactly 1. Additive mode adds the four mirror images.
+  // Divided by its total because psi is renormalised only when it drifts (see evolve): everything that reads the density (goals, bots, metrics) sees a
+  // probability, whatever the drift.
   density() {
     const { R, I, D, gw, gh } = this;
-    if (!this.add) { for (let i = 0; i < N; i++) D[i] = R[i] * R[i] + I[i] * I[i]; return D; }
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        let sum = 0;
-        for (const yy of [y, gh - 1 - y]) for (const xx of [x, gw - 1 - x]) { const k = yy * gw + xx; sum += R[k] * R[k] + I[k] * I[k]; }
-        D[y * W + x] = sum;
+    if (!this.add) { for (let i = 0; i < N; i++) D[i] = R[i] * R[i] + I[i] * I[i]; }
+    else {
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          let sum = 0;
+          for (const yy of [y, gh - 1 - y]) for (const xx of [x, gw - 1 - x]) { const k = yy * gw + xx; sum += R[k] * R[k] + I[k] * I[k]; }
+          D[y * W + x] = sum;
+        }
       }
     }
+    let tot = 0;
+    for (let i = 0; i < N; i++) tot += D[i];
+    if (tot > 0) for (let i = 0; i < N; i++) D[i] /= tot;
     return D;
   }
 
@@ -310,40 +324,124 @@ class Match {
     if (this.add) { fn(-cx, cy, -hx, hy, -1, 1); fn(cx, -cy, hx, -hy, 1, -1); fn(-cx, -cy, -hx, -hy, -1, -1); }
   }
 
-  // Kick: a momentum kick of kappa along each direction of `dirs` ([{hx, hy, a}], sum of a^2 = 1), weighted by amplitude.
-  // One direction: psi *= exp(i kappa g(r) d.r). Several: the caught wave is split into a superposition with one momentum component per direction,
-  // psi *= (1 - g) + g * conj(c0) * sum_j a_j exp(i (ph_j + kappa g(r) d_j.r)), so each direction gets probability a_j^2 (the (1 - g) term keeps the window's
-  // edge continuous). The offsets ph_j (largest component 0, the others a common angle) make |c0| = |sum a_j exp(i ph_j)| = 1: at the window's centre the factor
-  // is 1, the density is not bumped there, and the components only show up as fringes. A split is a finite event, not a force: a Pass fires it in pulses
-  // (see buildPotential), because repeating it every tick would only average the directions.
-  // The factors of different players multiply pointwise, so they commute: left/right mirrored teams stay mirror images whatever the order of the players.
-  kickPhase(cx, cy, dirs, sigma, kappa, flip = 1) {
-    const { R, I } = this;
-    const many = dirs.length > 1;
-    let ph = null, c0r = 1, c0i = 0;
-    if (many) {
-      let top = 0; dirs.forEach((d, j) => { if (d.a > dirs[top].a + 1e-9) top = j; }); // the tolerance keeps mirrored teams choosing the same one
-      const a1 = dirs[top].a, S = dirs.reduce((t, d, j) => t + (j === top ? 0 : d.a), 0);
-      const beta = S > 0 ? Math.acos(clamp((1 - a1 * a1 - S * S) / (2 * a1 * S), -1, 1)) : 0;
-      ph = dirs.map((d, j) => (j === top ? 0 : flip * beta)); // the sign alternates from pulse to pulse: the first-order amplitude tilt of a split would otherwise always favour the same side
-      c0r = ph.reduce((t, p, j) => t + dirs[j].a * Math.cos(p), 0); c0i = ph.reduce((t, p, j) => t + dirs[j].a * Math.sin(p), 0);
-      const n = Math.hypot(c0r, c0i) || 1; c0r /= n; c0i /= -n; // conj(c0)
+  // Gradient of u at cell i = (x, y) by central differences, with the same boundary as the Laplacian (0 outside, or wrapped on the torus).
+  grad(u, x, y, i) {
+    const { gw, gh, add } = this;
+    const l = x > 0 ? u[i - 1] : add ? u[i + gw - 1] : 0, r = x < gw - 1 ? u[i + 1] : add ? u[i - gw + 1] : 0;
+    const d = y > 0 ? u[i - gw] : add ? u[i + (gh - 1) * gw] : 0, t = y < gh - 1 ? u[i + gw] : add ? u[i - (gh - 1) * gw] : 0;
+    return [(r - l) / 2, (t - d) / 2];
+  }
+
+  // What player i's catch zone (one image of it) does this frame, measured on the current psi; null if nothing catchable is in it.
+  // Only the SLOW part of the ball can be caught: psi seen from the player (psi e^{-i k_p . r}, k_p the player's own momentum) is blurred by a Gaussian of
+  // std 1/k_c, k_c = the catch speed as a wavenumber. A blur passes momentum k with amplitude exp(-k^2 / (2 k_c^2)), i.e. probability exp(-(v / catchSpeed)^2):
+  // the energy selectivity of the catch, component by component (two fast balls meeting head-on are both filtered out, though their mean momentum is 0;
+  // a ball just kicked away is filtered out and not kicked again). Returns, per zone cell, the slow part psi_s and the taper t, plus the catch fraction a
+  // at the centre and the components [{kx, ky, q}] (momentum change in rad/m, probability share of the caught part; the q sum to 1).
+  // Speeds convert to wavenumbers by k = v * mass / timeScale.
+  catchPlan(p, aims, cx, cy, hx, hy, sx, sy, dt) {
+    const P = this.params, { R, I } = this, g = CATCH[p.stance];
+    const rz = g.r * P.reach, wx = cx + hx * g.off * P.reach, wy = cy + hy * g.off * P.reach, toK = P.mass / P.timeScale;
+    const ux = sx * p.vx * toK, uy = sy * p.vy * toK, sb = 1 / (P.catchSpeed * toK), rb = Math.min(3 * sb, BLUR_MAX);
+    // the box around the zone, widened by the blur radius; psi seen from the player there (0 past a wall in coherent mode, wrapped on the torus)
+    const { gw, gh, add } = this, e = Math.floor(rb), x0 = Math.ceil(wx - rz - 0.5), x1 = Math.floor(wx + rz - 0.5), y0 = Math.ceil(wy - rz - 0.5), y1 = Math.floor(wy + rz - 0.5);
+    const bx0 = x0 - e, by0 = y0 - e, bw = x1 - x0 + 1 + 2 * e, bh = y1 - y0 + 1 + 2 * e, zw = x1 - x0 + 1;
+    const pr = new Float64Array(bw * bh), pi = new Float64Array(bw * bh);
+    for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
+      let x = bx0 + bx, y = by0 + by;
+      if (add) { x = ((x % gw) + gw) % gw; y = ((y % gh) + gh) % gh; } else if (x < 0 || x >= gw || y < 0 || y >= gh) continue;
+      const j = y * gw + x, th = -(ux * (bx0 + bx + 0.5 - wx) + uy * (by0 + by + 0.5 - wy)), c = Math.cos(th), sn = Math.sin(th);
+      pr[by * bw + bx] = R[j] * c - I[j] * sn; pi[by * bw + bx] = R[j] * sn + I[j] * c;
     }
-    this.forBox(cx, cy, 4 * sigma, (i, dx, dy) => {
-      const g = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
-      let c, s;
-      if (!many) {
-        const th = kappa * g * (dx * dirs[0].hx + dy * dirs[0].hy);
-        c = Math.cos(th); s = Math.sin(th);
-      } else {
-        let sr = 0, si = 0;
-        dirs.forEach((d, j) => { const th = ph[j] + kappa * g * (dx * d.hx + dy * d.hy); sr += d.a * Math.cos(th); si += d.a * Math.sin(th); });
-        c = 1 - g + g * (sr * c0r - si * c0i); s = g * (sr * c0i + si * c0r);
+    // separable Gaussian blur and its gradient (the kernel's derivative): x pass over the zone's columns, then y pass at the zone's cells
+    const gk = [], dk = [];
+    let n1 = 0;
+    for (let o = -e; o <= e; o++) { const g = Math.exp(-(o * o) / (2 * sb * sb)); gk.push(g); dk.push(g * o / (sb * sb)); n1 += g; }
+    const ar = new Float64Array(zw * bh), ai = new Float64Array(zw * bh), dr = new Float64Array(zw * bh), di = new Float64Array(zw * bh);
+    for (let by = 0; by < bh; by++) for (let c = 0; c < zw; c++) {
+      let sr = 0, si = 0, tr = 0, ti = 0;
+      for (let o = 0; o <= 2 * e; o++) { const k = by * bw + c + o, g = gk[o], d = dk[o]; sr += g * pr[k]; si += g * pi[k]; tr += d * pr[k]; ti += d * pi[k]; }
+      ar[by * zw + c] = sr; ai[by * zw + c] = si; dr[by * zw + c] = tr; di[by * zw + c] = ti;
+    }
+    const norm = 1 / (n1 * n1), cells = [];
+    let w = 0, jx = 0, jy = 0, kin = 0;
+    this.forBox(wx, wy, rz, (i, dx, dy) => {
+      const t = taper(dx * dx + dy * dy, rz);
+      if (!(t > 0)) return;
+      const c = Math.round(wx + dx - 0.5) - x0, r0 = Math.round(wy + dy - 0.5) - y0; // the cell's column in the zone, its row in the box minus e
+      let fr = 0, fi = 0, gxr = 0, gxi = 0, gyr = 0, gyi = 0;
+      for (let o = 0; o <= 2 * e; o++) {
+        const k = (r0 + o) * zw + c, g = gk[o], d = dk[o];
+        fr += g * ar[k]; fi += g * ai[k]; gxr += g * dr[k]; gxi += g * di[k]; gyr += d * ar[k]; gyi += d * ai[k];
       }
-      const r = R[i], m = I[i];
-      R[i] = r * c - m * s;
-      I[i] = r * s + m * c;
+      fr *= norm; fi *= norm; gxr *= norm; gxi *= norm; gyr *= norm; gyi *= norm;
+      cells.push({ i, dx, dy, t, fr, fi, ux, uy });
+      w += t * (fr * fr + fi * fi);
+      jx += t * (fr * gxi - fi * gxr); jy += t * (fr * gyi - fi * gyr);
+      kin += t * (gxr * gxr + gxi * gxi + gyr * gyr + gyi * gyi);
     });
+    if (!(w > 1e-14)) return null;
+    // the slow part's mean momentum and RMS speed, both relative to the player
+    const px = jx / w, py = jy / w, v = Math.sqrt(Math.max(0, kin / w)) / toK;
+    const a = 1 - Math.exp(-CATCH_GAIN * (v + CATCH_V0) / (2 * rz) * dt);
+    const kick = KICK_GAIN[p.stance] * P.kickSpeed * toK, dirs = aims.length ? aims.map((t) => ({ dx: t.dx * sx, dy: t.dy * sy, w: t.w })) : [{ dx: 0, dy: 0, w: 1 }];
+    const betas = P.absorbSpread > 0 ? BETA_NODES.map(([z, q]) => [clamp(P.absorbMean + z * P.absorbSpread, 0, 1), q]) : [[P.absorbMean, 1]];
+    const comps = [];
+    for (const [beta, qb] of betas) for (const d of dirs) {
+      const kx = -beta * px + kick * d.dx, ky = -beta * py + kick * d.dy;
+      const same = comps.find((c) => Math.abs(c.kx - kx) < 1e-9 && Math.abs(c.ky - ky) < 1e-9); // equal momenta are one component, not two that interfere
+      if (same) same.q += qb * d.w; else comps.push({ kx, ky, q: qb * d.w });
+    }
+    return { cells, a, comps };
+  }
+
+  // Apply a catch plan to the slow part psi_s only: psi += (M - 1) psi_s, M = s + i sum_c sqrt(w_c) e^{i k_c . r}, r the offset from the zone centre,
+  // s^2 = 1 - a t (stays as it is), w_c = a t q_c (caught, component c), t the zone's taper (see `taper`; 0 at its edge: nothing happens outside).
+  // As in a split, the components are orthogonal once they separate, so the caught share a t q_c ends up with momentum change k_c.
+  // The caught part is a quarter turn (i) ahead of what stays: with one component |M|^2 = 1 where k_c . r = 0, and on average over a fringe.
+  // The offset is the same for every frame, so the kicks of successive frames add up coherently into one ray (offsets that alternated made consecutive
+  // kicks cancel), and it is a constant: an offset that varied with the taper (to make M exactly 1 at the centre) acted as a lens on the part that stays
+  // and scattered as much of it, half of it backwards, as the kick moved. The changes of different players are computed on the same psi and summed,
+  // so they commute.
+  applyCatch(plan, DR, DI, T, touched) {
+    const { cells, a, comps } = plan;
+    for (const { i, dx, dy, t, fr, fi, ux, uy } of cells) {
+      let stay = 1 - a * t;
+      const moved = [];
+      for (const c of comps) { const w = a * t * c.q; if (Math.abs(c.kx) < 1e-12 && Math.abs(c.ky) < 1e-12) stay += w; else moved.push({ kx: c.kx, ky: c.ky, amp: Math.sqrt(w) }); }
+      if (!moved.length) continue;
+      const s = Math.sqrt(Math.max(0, stay));
+      let mr = 0, mi = 0;
+      for (const q of moved) { const ph = q.kx * dx + q.ky * dy; mr -= q.amp * Math.sin(ph); mi += q.amp * Math.cos(ph); } // i sum_c amp_c e^{i k_c . r}
+      const er = s - 1 + mr, ei = mi; // M - 1
+      // back from the player's frame: psi_s = phi_s e^{i k_p . r}
+      const th = ux * dx + uy * dy, c = Math.cos(th), sn = Math.sin(th), pr = fr * c - fi * sn, pi = fr * sn + fi * c;
+      if (T[i] === 0 && DR[i] === 0 && DI[i] === 0) touched.push(i);
+      DR[i] += er * pr - ei * pi; DI[i] += er * pi + ei * pr;
+      T[i] += t;
+    }
+  }
+
+  // All players' catches for this frame. Every plan is measured on the same psi, the changes are summed and applied together, then the probability inside
+  // the catch zones is restored to what it was (the change is not exactly unitary): psi *= 1 + lambda T over the zones, T the summed tapers,
+  // so the correction fades out at the zone edges and nothing outside the zones changes.
+  catchAll(dt) {
+    const { R, I, DR, DI, T } = this, touched = [];
+    const plans = [];
+    this.players.forEach((p, i) => {
+      const aims = this.aims(i);
+      this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy, sx, sy) => { const pl = this.catchPlan(p, aims, cx, cy, hx, hy, sx, sy, dt); if (pl) plans.push(pl); });
+    });
+    for (const pl of plans) this.applyCatch(pl, DR, DI, T, touched);
+    let before = 0, A = 0, B = 0, C = 0;
+    for (const i of touched) {
+      before += R[i] * R[i] + I[i] * I[i];
+      R[i] += DR[i]; I[i] += DI[i];
+      const d = R[i] * R[i] + I[i] * I[i]; A += d * T[i] * T[i]; B += 2 * d * T[i]; C += d;
+    }
+    C -= before;
+    const disc = B * B - 4 * A * C, lambda = disc >= 0 && B > 0 ? -2 * C / (B + Math.sqrt(disc)) : 0;
+    for (const i of touched) { const s = 1 + lambda * T[i]; R[i] *= s; I[i] *= s; DR[i] = 0; DI[i] = 0; T[i] = 0; }
   }
 
   // Where player i's kick goes: a list of {dx, dy, tx, ty, w} (unit direction, target point, probability weight; weights sum to 1). Empty for Dribble.
@@ -359,7 +457,7 @@ class Match {
     if (st === STANCE.DEFENSE || !P.autoAim) return [{ dx: p.hx, dy: p.hy, tx: clamp(p.x + p.hx * 15, 0, W), ty: clamp(p.y + p.hy * 15, 0, H), w: 1 }];
     const team = i < TEAM_SIZE ? 0 : 1, goalX = team === 0 ? W : 0, ownX = team === 0 ? 0 : W;
     if (st === STANCE.SHOT) return [one(goalX, H / 2)];
-    const speed = clamp(KICK_GAIN[STANCE.PASS] * P.kick * P.timeScale / P.mass, 2, 30); // estimated ball speed (m/s) after a one-second kick
+    const speed = clamp(KICK_GAIN[STANCE.PASS] * P.kickSpeed, 2, 40); // the pass speed (m/s): the caught share leaves at once at this speed
     const out = [];
     for (let j = team * TEAM_SIZE; j < (team + 1) * TEAM_SIZE; j++) {
       if (j === i) continue;
@@ -374,25 +472,17 @@ class Match {
     return out;
   }
 
-  buildPotential(dtReal) {
+  // The aims (shown to the clients) and the potential: only Dribble has a well, a Gaussian of std half the zone radius at the zone centre.
+  buildPotential() {
     const { V, params: P } = this;
     V.fill(0, 0, this.gn);
     this.players.forEach((p, i) => {
       const aims = this.aims(i);
       p.aim = aims.length ? aims.map((t) => ({ tx: t.tx, ty: t.ty, w: t.w })) : null;
-      // Catch well just ahead of the player (wide and a bit farther for Defense), carried along as the player moves; then the kick of the caught wave.
-      const def = p.stance === STANCE.DEFENSE, g = CATCH[p.stance];
-      const sig = g.sig * P.reach, off = g.off * P.reach, depth = def ? P.wallHeight : P.wellDepth;
-      let kappa = KICK_GAIN[p.stance] * P.kick * dtReal, fire = true;
-      if (aims.length > 1) { // a Pass to several allies is a split, fired in pulses of the impulse of PULSE_S seconds
-        p.pulse = (p.pulse === undefined ? PULSE_S : p.pulse) + dtReal;
-        fire = p.pulse >= PULSE_S; kappa = KICK_GAIN[p.stance] * P.kick * PULSE_S;
-        if (fire) { p.pulse -= PULSE_S; p.pulses = (p.pulses || 0) + 1; }
-      } else { p.pulse = undefined; p.pulses = 0; }
-      this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy, sx, sy) => {
-        const wx = cx + hx * off, wy = cy + hy * off;
-        this.forBox(wx, wy, 4 * sig, (c, dx, dy) => { V[c] -= depth * Math.exp(-(dx * dx + dy * dy) / (2 * sig * sig)); });
-        if (aims.length && kappa > 0 && fire) this.kickPhase(wx, wy, aims.map((t) => ({ hx: t.dx * sx, hy: t.dy * sy, a: Math.sqrt(t.w) })), KICK_WIDTH * sig, kappa, p.pulses % 2 ? -1 : 1);
+      if (p.stance !== STANCE.DRIBBLE || !(P.wellDepth > 0)) return;
+      const g = CATCH[p.stance], sig = g.r * P.reach / 2, off = g.off * P.reach;
+      this.eachImage(p.x, p.y, p.hx, p.hy, (cx, cy, hx, hy) => {
+        this.forBox(cx + hx * off, cy + hy * off, 4 * sig, (c, dx, dy) => { V[c] -= P.wellDepth * Math.exp(-(dx * dx + dy * dy) / (2 * sig * sig)); });
       });
     });
   }
@@ -428,7 +518,8 @@ class Match {
 
   evolve(dt) {
     const gdt = dt * this.params.timeScale;
-    this.buildPotential(dt);
+    this.buildPotential();
+    this.catchAll(dt);
     const n = Math.ceil(gdt / 0.08), h = gdt / n;
     const { R, I, A } = this;
     for (let k = 0; k < n; k++) { // Visscher leapfrog: norm-preserving to second order
@@ -437,7 +528,12 @@ class Match {
     }
     const eps = Math.min(0.24, this.params.attenuation * 0.5 * gdt);
     if (eps > 0) { this.smooth(R, eps); this.smooth(I, eps); }
-    this.normalize();
+    // Renormalise only when the total has drifted by more than NORM_DRIFT: the smoothing loses probability every frame (so with heavy attenuation this is
+    // every frame), the leapfrog and the catches drift it slightly (R and I live half a substep apart). Summing costs as much as rescaling, but it is not
+    // a per-frame rescale: between two runs the total is whatever the physics left.
+    let sum = 0;
+    for (let i = 0; i < this.gn; i++) sum += R[i] * R[i] + I[i] * I[i];
+    if (Math.abs(sum - 1) > NORM_DRIFT) this.normalize();
   }
 
   // Wire format for clients: density quantised to bytes (sqrt scale, relative to the peak).
@@ -447,10 +543,16 @@ class Match {
     for (let i = 0; i < N; i++) if (rho[i] > max) max = rho[i];
     const dens = new Uint8Array(N);
     if (max > 0) for (let i = 0; i < N; i++) dens[i] = Math.round(255 * Math.sqrt(rho[i] / max));
-    const presence = this.players.map((p) => {
+    const presence = this.players.map((p) => { // the ball in the player's catch zone, weighted by the zone's taper
       let s = 0;
-      const r = this.params.reach;
-      this.forBox(p.x, p.y, 3 * r, (i, dx, dy) => { s += rho[i] * Math.exp(-(dx * dx + dy * dy) / (2 * r * r)); });
+      const g = CATCH[p.stance], rz = g.r * this.params.reach, off = g.off * this.params.reach;
+      const wx = p.x + p.hx * off, wy = p.y + p.hy * off; // on the pitch density (W wide), not the grid (2W wide in additive mode)
+      for (let y = Math.max(0, Math.ceil(wy - rz - 0.5)); y <= Math.min(H - 1, Math.floor(wy + rz - 0.5)); y++) {
+        for (let x = Math.max(0, Math.ceil(wx - rz - 0.5)); x <= Math.min(W - 1, Math.floor(wx + rz - 0.5)); x++) {
+          const d2 = (x + 0.5 - wx) ** 2 + (y + 0.5 - wy) ** 2;
+          s += rho[y * W + x] * taper(d2, rz);
+        }
+      }
       return s;
     });
     return {
@@ -463,4 +565,4 @@ class Match {
   }
 }
 
-module.exports = { Match, PARAMS, PRESETS, STANCE, CATCH, W, H, N, GOAL_DEPTH, TEAM_SIZE, NP };
+module.exports = { Match, PARAMS, PRESETS, STANCE, CATCH, KICK_GAIN, FRAME_DT, W, H, N, GOAL_DEPTH, TEAM_SIZE, NP };

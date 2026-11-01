@@ -5,25 +5,26 @@ const { Match, PARAMS, PRESETS, STANCE, W, H, N, GOAL_DEPTH, NP } = require('../
 const { DEFENSE, PASS, SHOT, DRIBBLE } = STANCE;
 
 const playing = () => { const m = new Match(); m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing'; return m; };
-// No player influences the wave: Dribble (no kick) with a well of depth 0.
-const quiet = (m) => { m.setParam('wallHeight', 0); m.setParam('wellDepth', 0); for (let i = 0; i < NP; i++) m.setStance(i, DRIBBLE); };
+// No player influences the wave: Dribble (no kick), no well, a catch that absorbs nothing (so it changes nothing).
+const quiet = (m) => { m.setParam('wellDepth', 0); m.setParam('absorbMean', 0); m.setParam('absorbSpread', 0); for (let i = 0; i < NP; i++) m.setStance(i, DRIBBLE); };
+// Mean momentum of the wave (the total probability current, rad/m), coherent grid.
+const current = (m) => { let jx = 0, jy = 0; for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; jx += m.R[i] * (m.I[i + 1] - m.I[i - 1]) / 2 - m.I[i] * (m.R[i + 1] - m.R[i - 1]) / 2; jy += m.R[i] * (m.I[i + W] - m.I[i - W]) / 2 - m.I[i] * (m.R[i + W] - m.R[i - W]) / 2; } return { jx, jy }; };
 const run = (m, secs) => { for (let k = 0; k < secs * 30; k++) m.step(1 / 30); };
 const centroidX = (m) => { let s = 0; for (let i = 0; i < N; i++) s += ((i % W) + 0.5) * (m.R[i] ** 2 + m.I[i] ** 2); return s; };
 const total = (m) => { let s = 0; for (let i = 0; i < m.gn; i++) s += m.R[i] ** 2 + m.I[i] ** 2; return s; };
 
-test('total probability stays 1 and nothing blows up', () => {
-  const m = playing(); m.setParam('timeScale', 12); m.setParam('wellDepth', 3); m.setParam('wallHeight', 4);
+test('total probability stays 1 (within the renormalisation tolerance) and nothing blows up', () => {
+  const m = playing(); m.setParam('timeScale', 30); m.setParam('wellDepth', 3); m.setParam('absorbMean', 1); m.setParam('kickSpeed', 40);
   for (let i = 0; i < 4; i++) m.setStance(i, PASS);
   for (let i = 4; i < NP; i++) m.setStance(i, DEFENSE);
   m.setOrder(0, 5, 0); m.setOrder(5, -5, 3);
-  run(m, 20);
-  assert.ok(Math.abs(total(m) - 1) < 1e-9);
+  for (let k = 0; k < 30 * 20; k++) { m.step(1 / 30); assert.ok(Math.abs(total(m) - 1) < 0.006, 'total ' + total(m)); }
   assert.ok(m.R.every(Number.isFinite));
 });
 
 test('a kicked packet reflects off the wall and comes back', () => {
-  const m = playing(); m.setParam('attenuation', 0); quiet(m);
-  m.players[0].x = 44; m.players[0].y = 25; m.setStance(0, SHOT); // shot from just behind the ball
+  const m = playing(); m.setParam('attenuation', 0); m.setParam('threshold', 0.9); quiet(m);
+  m.players[0].x = 45.5; m.players[0].y = 25; m.setStance(0, SHOT); // shot from just behind the ball (its zone centred on it)
   run(m, 2);
   m.setStance(0, DRIBBLE);
   let max = 0, last = 0;
@@ -169,7 +170,7 @@ test('additive walls: probability is conserved and a rebound never makes a node 
     const m = new Match(); m.setParam('additive', additive); m.setParam('packetWidth', 5); m.setParam('attenuation', 0); m.kickoff();
     m.setPresent(0, true); m.setPresent(1, true); m.phase = 'playing';
     for (let i = 0; i < 8; i++) m.setStance(i, DRIBBLE);
-    m.setParam('wallHeight', 0); m.setParam('wellDepth', 0);
+    quiet(m);
     // give the packet momentum toward the left wall: phase ramp over the whole grid (torus-safe: whole number of waves not needed, ramp is local to the packet)
     for (let y = 0; y < m.gh; y++) for (let x = 0; x < m.gw; x++) {
       const th = -0.35 * (x + 0.5 - W / 2), c = Math.cos(th), s = Math.sin(th), r = m.R[y * m.gw + x], q = m.I[y * m.gw + x];
@@ -180,7 +181,7 @@ test('additive walls: probability is conserved and a rebound never makes a node 
     for (let k = 0; k < 30 * 40; k++) {
       m.step(1 / 30);
       const D = m.density(); let max = 0; for (let i = 0; i < N; i++) max = Math.max(max, D[i]);
-      assert.ok(Math.abs(D.reduce((a, b) => a + b, 0) - 1) < 1e-6, 'probability conserved');
+      assert.ok(Math.abs(D.reduce((a, b) => a + b, 0) - 1) < 0.006, 'probability conserved (within the renormalisation tolerance)');
       ratio = Math.max(ratio, D[25 * W + 0] / max);
     }
     return ratio;
@@ -195,8 +196,8 @@ test('additive mode: grid switches at kick-off, players still act, mass and goal
   assert.equal(m.gn, 4 * N);
   for (let i = 0; i < 4; i++) m.setStance(i, PASS);
   for (let i = 4; i < 8; i++) m.setStance(i, DEFENSE);
-  m.setParam('timeScale', 12); m.setParam('threshold', 0.9); run(m, 10);
-  assert.ok(Math.abs(total(m) - 1) < 1e-9 && m.R.every(Number.isFinite));
+  m.setParam('threshold', 0.9); run(m, 10);
+  assert.ok(Math.abs(total(m) - 1) < 0.006 && m.R.every(Number.isFinite));
   m.setParam('attenuation', 0.5); run(m, 1); m.setParam('threshold', 0.1); // smoothing wraps around on the torus too
   const ln = m.characteristicLength(); assert.ok(ln > 0 && ln <= W);
   m.R.fill(0); m.I.fill(0);
@@ -207,7 +208,7 @@ test('additive mode: grid switches at kick-off, players still act, mass and goal
 });
 
 test('presets only name real parameters inside their ranges', () => {
-  assert.deepEqual(Object.keys(PRESETS), ['default', 'waves', 'additive', 'waves-kick', 'waves-well', 'waves-wall', 'waves-mass', 'hybrid']);
+  assert.deepEqual(Object.keys(PRESETS), ['default', 'additive']);
   for (const p of Object.values(PRESETS)) for (const [k, v] of Object.entries(p)) assert.ok(PARAMS[k] && v >= PARAMS[k].min && v <= PARAMS[k].max, k);
 });
 
@@ -253,50 +254,79 @@ test('aims: pass targets lead a running ally; allies within 2 m are skipped; wit
   assert.ok(g.length === 1 && g[0].tx === W && g[0].ty === H / 2, 'nobody to pass to: the goal ' + JSON.stringify(g));
 });
 
-test('Pass splits the caught wave between the allies; Dribble and Defense behave as described', () => {
-  const sides = (ally2) => {
-    const m = playing(); m.setParam('packetWidth', 14); m.kickoff(); park(m); m.setParam('attenuation', 0); m.setParam('wellDepth', 0.3);
-    place(m, 0, 45, 25); place(m, 1, 75, 8); place(m, 2, ally2 ? 75 : 45, ally2 ? 42 : 25); place(m, 3, 45, 25); // allies within 2 m of the passer are not receivers
-    m.setStance(0, PASS); run(m, 2.5); m.setStance(0, DRIBBLE); run(m, 1.5);
-    const D = m.density(); let up = 0, down = 0;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { if (y < 20) up += D[y * W + x]; else if (y > 30) down += D[y * W + x]; }
-    return { up, down, total: total(m) };
-  };
-  const two = sides(true), one = sides(false);
-  assert.ok(Math.abs(two.total - 1) < 1e-9);
-  assert.ok(two.up > 0.3 && two.down > 0.3 && Math.abs(two.up - two.down) < 0.1, 'both receivers get an equal share ' + two.up + ' / ' + two.down);
-  assert.ok(one.up > 0.4 && one.down < 0.25, 'a single receiver gets it all ' + one.up + ' / ' + one.down);
+// The passer stands 1 reach (4.5 m) behind the kick-off ball, so its zone is centred on it; allies 2 and 3 stand on the passer's spot (within 2 m: not receivers).
+// Wells off: a Dribble well under the ball would make it oscillate in place.
+const passer = (m, ally2) => { m.kickoff(); park(m); m.setParam('threshold', 0.9); m.setParam('wellDepth', 0); place(m, 0, 45.5, 25); place(m, 1, 80, 8); place(m, 2, ally2 ? 80 : 45.5, ally2 ? 42 : 25); place(m, 3, 45.5, 25); };
+
+test('Pass kicks the caught share toward the ally (mean momentum along the aim); two allies split it evenly', () => {
+  const one = playing(); passer(one, false); one.setStance(0, PASS); run(one, 1.5);
+  const j = current(one), aim = one.aims(0)[0];
+  assert.ok(j.jx > 0.05 && Math.abs(j.jy / j.jx - aim.dy / aim.dx) < 0.1, `momentum along the aim: ${j.jx} ${j.jy} vs ${aim.dx} ${aim.dy}`);
+  // two allies: no net sideways momentum, and the extra density (over a pass of speed 0) toward each ally is about the same
+  const wedges = (kick) => { const m = playing(); passer(m, true); m.setParam('kickSpeed', kick); m.setStance(0, PASS); run(m, 1.5);
+    const D = m.density(); let up = 0, down = 0; for (let y = 0; y < H; y++) for (let x = 60; x < 85; x++) { if (y < 18) up += D[y * W + x]; else if (y >= 32) down += D[y * W + x]; }
+    return { up, down, j: current(m) }; };
+  const two = wedges(PARAMS.kickSpeed.def), base = wedges(0), up = two.up - base.up, down = two.down - base.down;
+  assert.ok(Math.abs(two.j.jy) < 0.1 * two.j.jx, 'no net sideways momentum ' + JSON.stringify(two.j));
+  assert.ok(up > 0.005 && down > 0.005 && Math.abs(up - down) < 0.3 * up, `both allies get a share: ${up} / ${down}`);
 });
 
 test('Dribble keeps the wave with the player (no kick); Shot kicks it away hard, Pass less, Defense clears it', () => {
-  const right = (stance) => { // mass in the last 38 m after 0.8 s in the stance and 3 s more
-    const m = playing(); park(m); m.setParam('attenuation', 0);
-    place(m, 0, 40, 25); place(m, 1, 80, 25); m.setStance(0, stance); run(m, 0.8); m.setStance(0, DRIBBLE); run(m, 3);
+  const right = (stance) => { // mass in the last 38 m after 1 s in the stance and 1 s more
+    const m = playing(); park(m); m.setParam('threshold', 0.9);
+    place(m, 0, 45.5, 25); place(m, 1, 80, 25); m.setStance(0, stance); run(m, 1); m.setStance(0, DRIBBLE); run(m, 1);
     const D = m.density(); let s = 0; for (let i = 0; i < N; i++) if (i % W >= 62) s += D[i];
     return s;
   };
   const dribble = right(DRIBBLE), pass = right(PASS), shot = right(SHOT), defense = right(DEFENSE);
-  assert.ok(dribble < 0.22, 'no kick: ' + dribble);
-  assert.ok(pass > dribble + 0.03 && shot > pass + 0.1 && defense > shot, `dribble ${dribble} pass ${pass} shot ${shot} defense ${defense}`);
+  assert.ok(dribble < 0.1, 'no kick: ' + dribble);
+  assert.ok(pass > dribble + 0.03 && shot > pass + 0.05 && defense > dribble + 0.05, `dribble ${dribble} pass ${pass} shot ${shot} defense ${defense}`);
 });
 
-test('Defense catches over a wide area: its well is wider and farther ahead than the others', () => {
-  const m = playing(); park(m); place(m, 0, 40, 25); m.setStance(0, DEFENSE); m.buildPotential(1 / 30);
-  const dWide = m.V[25 * W + 40 + 12] , dNear = (() => { m.setStance(0, DRIBBLE); m.buildPotential(1 / 30); return m.V[25 * W + 40 + 12]; })();
-  assert.ok(dWide < dNear - 0.2, 'wide well reaches 12 m ahead ' + dWide + ' vs ' + dNear);
+test('Defense catches over a wide zone: 1.5 x the radius, centred 1.5 x the reach ahead; only Dribble has a well', () => {
+  const m = playing(); park(m); place(m, 0, 40, 25);
+  const snap = (st) => { m.setStance(0, st); m.buildPotential(); return m.V[25 * W + 40 + 4]; };
+  assert.equal(snap(PASS), 0); assert.equal(snap(SHOT), 0); assert.equal(snap(DEFENSE), 0);
+  assert.ok(snap(DRIBBLE) < -0.4, 'the Dribble well is under its zone centre');
+  // a ball 10 m ahead is in the Defense zone (centre 6.75 m ahead, radius 6.75) but not in the Pass zone (centre 4.5, radius 4.5)
+  m.R.fill(0); m.I.fill(0); m.R[25 * W + 50] = 1;
+  m.setStance(0, DEFENSE); const d = m.snapshot().presence[0]; m.setStance(0, PASS); const p = m.snapshot().presence[0];
+  assert.ok(d > 0.3 && p === 0, `presence: Defense ${d}, Pass ${p}`);
 });
 
 test('aim: kicks follow the aim, not the heading: a shot facing up still sends the ball toward the goal', () => {
-  const shift = (autoAim) => {
-    const m = playing(); m.setParam('packetWidth', 14); m.kickoff(); park(m); m.setParam('autoAim', autoAim); m.setParam('attenuation', 0);
-    place(m, 0, 40, 25, { hx: 0, hy: -1 }); m.setStance(0, SHOT);
-    run(m, 0.8); m.setStance(0, DRIBBLE); run(m, 3);
-    let cx = 0, cy = 0; const D = m.density(); for (let i = 0; i < N; i++) { cx += ((i % W) + 0.5) * D[i]; cy += (Math.floor(i / W) + 0.5) * D[i]; }
-    return { cx, cy };
+  const kick = (autoAim) => { // the player faces up, its zone centred on the ball
+    const m = playing(); park(m); m.setParam('autoAim', autoAim); m.setParam('threshold', 0.9);
+    place(m, 0, 50, 29.5, { hx: 0, hy: -1 }); m.setStance(0, SHOT); run(m, 0.5);
+    return current(m);
   };
-  const on = shift(1), off = shift(0);
-  assert.ok(on.cx > off.cx + 1, 'auto-aim goes right ' + on.cx + ' vs ' + off.cx);
-  assert.ok(off.cy < on.cy - 0.5, 'heading up went up ' + off.cy + ' vs ' + on.cy);
+  const on = kick(1), off = kick(0);
+  assert.ok(on.jx > 0.05 && Math.abs(on.jy) < 0.3 * on.jx, 'auto-aim goes right ' + JSON.stringify(on));
+  assert.ok(off.jy < -0.05 && Math.abs(off.jx) < 0.3 * -off.jy, 'heading up went up ' + JSON.stringify(off));
+});
+
+test('catch: a fast ball crossing a zone is caught much less than a slow one (a Shot zone barely touches it)', () => {
+  const moved = (v) => { // a ball crossing a Shot zone sideways at speed v: how much momentum does the kick add along x?
+    const m = playing(); m.kickoff(); park(m); m.setParam('threshold', 0.9); m.setParam('attenuation', 0);
+    const k = v * m.params.mass / m.params.timeScale;
+    for (let i = 0; i < m.gn; i++) { const y = Math.floor(i / m.gw), th = k * (y + 0.5 - 25), c = Math.cos(th), sn = Math.sin(th), r = m.R[i], q = m.I[i]; m.R[i] = r * c - q * sn; m.I[i] = r * sn + q * c; }
+    place(m, 0, 45.5, 25); m.setParam('autoAim', 0); m.setStance(0, SHOT); run(m, 0.5);
+    return current(m).jx;
+  };
+  const slow = moved(2), fast = moved(30);
+  assert.ok(slow > 0.05 && fast < 0.25 * slow, `kick momentum: slow ball ${slow}, fast ball ${fast}`);
+});
+
+test('catch: two balls meeting head-on in a zone are both fast, so little is caught (the mean momentum, 0, does not count)', () => {
+  const kicked = (v) => {
+    const m = playing(); m.kickoff(); park(m); m.setParam('threshold', 0.9); m.setParam('attenuation', 0);
+    const k = v * m.params.mass / m.params.timeScale;
+    for (let i = 0; i < m.gn; i++) m.R[i] *= Math.cos(k * (Math.floor(i / m.gw) + 0.5 - 25)); // a standing wave along y: +k and -k
+    m.normalize(); place(m, 0, 45.5, 25); m.setParam('autoAim', 0); m.setStance(0, SHOT); run(m, 0.5);
+    return current(m).jx;
+  };
+  const still = kicked(0), clash = kicked(30);
+  assert.ok(clash < 0.25 * still, `kick momentum: still ball ${still}, head-on pair ${clash}`);
 });
 
 // ---- left/right symmetry ----------------------------------------------------------------------------------------

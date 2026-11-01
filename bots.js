@@ -145,7 +145,7 @@ const STRATEGIES = {
   chase(m, t, c) {
     const k = ctx(t), gx = W - k.own, P = m.params, g = CATCH[DRIBBLE];
     const inGoal = (x, y) => Math.abs(x - gx) < GOAL_DEPTH + 2 && Math.abs(y - H / 2) < P.goalHeight / 2 + 2; // the opposing goal, plus a 2 m margin
-    const spots = hotSpots(m, k.d, TEAM_SIZE, 1.5 * g.sig * P.reach, inGoal).filter((q, n, a) => q.v >= 0.5 * a[0].v); // fragments under half the hottest are ignored
+    const spots = hotSpots(m, k.d, TEAM_SIZE, 1.5 * g.r * P.reach, inGoal).filter((q, n, a) => q.v >= 0.5 * a[0].v); // fragments under half the hottest are ignored
     if (!spots.length) spots.push(c);
     const free = [0, 1, 2, 3];
     // hottest spot first, each to the nearest free player; players left over (fewer spots than players) back up the hottest spot
@@ -156,7 +156,7 @@ const STRATEGIES = {
       const i = k.base + n, p = m.players[i];
       const L = Math.hypot(gx - q.x, H / 2 - q.y) || 1, ux = (gx - q.x) / L, uy = (H / 2 - q.y) / L;
       const off = g.off * P.reach, wx = p.x + p.hx * off, wy = p.y + p.hy * off;
-      const caught = Math.hypot(wx - q.x, wy - q.y) < g.sig * P.reach;
+      const caught = Math.hypot(wx - q.x, wy - q.y) < g.r * P.reach;
       m.setStance(i, caught ? DRIBBLE : SHOT); // Shot while still coming: a bare well approaching from behind drags the ball back (own goals)
       if (caught) m.setOrder(i, ux * 3, uy * 3); // caught: carry it toward the goal at 3 m/s (6 lost it more often)
       else goTo(m, i, q.x - ux * off, q.y - uy * off, ux, uy); // get behind the spot, facing the goal

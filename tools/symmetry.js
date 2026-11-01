@@ -16,7 +16,7 @@ function fresh(preset) {
   return m;
 }
 
-for (const preset of ['default', 'waves', 'additive']) {
+for (const preset of ['default', 'additive']) {
   const m = fresh(preset); let worst = 0;
   for (let k = 0; k < 30 * 60; k++) {
     const t = k / 30;
